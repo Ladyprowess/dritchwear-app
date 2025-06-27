@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, Alert, M
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Package, Filter, Search, Clock, CheckCircle, XCircle, CreditCard, Wallet } from 'lucide-react-native';
+import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import PaystackPayment from '@/components/PaystackPayment';
 
@@ -172,8 +172,6 @@ export default function CustomerOrdersScreen() {
         .from('invoices')
         .update({ status: 'accepted' })
         .eq('id', invoice.id);
-        console.log('invoice update error:', invoiceError);
-
 
       if (invoiceError) throw invoiceError;
       
@@ -223,8 +221,6 @@ export default function CustomerOrdersScreen() {
         .from('invoices')
         .update({ status: 'rejected' })
         .eq('id', invoice.id);
-        console.log('invoice update error:', invoiceError);
-
 
       if (invoiceError) throw invoiceError;
 
@@ -308,6 +304,9 @@ export default function CustomerOrdersScreen() {
     }
 
     try {
+      // CRITICAL FIX: Only deduct from wallet for wallet payments
+      console.log('Processing wallet payment for custom order - deducting from wallet');
+      
       // Deduct from wallet
       const { error: walletError } = await supabase
         .from('profiles')
@@ -360,7 +359,10 @@ export default function CustomerOrdersScreen() {
     if (!paymentInvoice || !paymentOrder) return;
 
     try {
-      // Create transaction record
+      // CRITICAL FIX: For Paystack payments, DO NOT deduct from wallet
+      console.log('Processing Paystack payment for custom order - NO wallet deduction');
+      
+      // Create transaction record ONLY - DO NOT touch wallet
       const { error: transactionError } = await supabase
         .from('transactions')
         .insert({
@@ -421,8 +423,10 @@ export default function CustomerOrdersScreen() {
 
       if (notificationError) throw notificationError;
 
-      // Refresh profile to get updated wallet balance
-      await refreshProfile();
+      // CRITICAL: Only refresh profile for wallet payments
+      if (paymentMethod === 'wallet') {
+        await refreshProfile();
+      }
 
       Alert.alert(
         'Payment Successful',
@@ -442,10 +446,17 @@ export default function CustomerOrdersScreen() {
     return !item.items;
   };
 
+  const generateOrderNumber = (id: string, isCustom: boolean = false) => {
+    const prefix = isCustom ? 'CO' : 'OR';
+    const shortId = id.slice(0, 8).toUpperCase();
+    return `${prefix}-${shortId}`;
+  };
+
   const renderOrderItem = (item: Order) => {
     const isCustom = isCustomRequest(item);
     const status = isCustom ? item.status : item.order_status;
     const statusColor = getStatusColor(status || '');
+    const orderNumber = generateOrderNumber(item.id, isCustom);
 
     return (
       <Pressable 
@@ -461,7 +472,7 @@ export default function CustomerOrdersScreen() {
               </View>
             )}
             <Text style={styles.orderId}>
-              {isCustom ? item.title : `#${item.id.slice(0, 8)}`}
+              {isCustom ? item.title : orderNumber}
             </Text>
             <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>
           </View>
@@ -534,16 +545,15 @@ export default function CustomerOrdersScreen() {
 
                 {/* Show Pay Now button for 'accepted' status */}
                 {invoice.status === 'accepted' && item.status !== 'rejected' && (
-  <Pressable
-    style={styles.payNowButton}
-    onPress={() => handlePayForCustomOrder(invoice, item)}
-  >
-    <CreditCard size={16} color="#FFFFFF" />
-    <Text style={styles.payNowButtonText}>
-      Pay Now - {formatCurrency(invoice.amount)}
-    </Text>
-  </Pressable>
-)}
+                  <Pressable
+                    style={styles.payNowButton}
+                    onPress={() => handlePayForCustomOrder(invoice, item)}
+                  >
+                    <Text style={styles.payNowButtonText}>
+                      Pay Now - {formatCurrency(invoice.amount)}
+                    </Text>
+                  </Pressable>
+                )}
 
               </View>
             ))}
@@ -674,29 +684,30 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   filtersContainer: {
-      maxHeight: 48,
-      marginBottom: 16,
-    },
-    
-    filtersContent: {
-      paddingHorizontal: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8, // or use marginRight if you're not using gap
-    },
-    
-    filterChip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: '#FFFFFF',
-      borderWidth: 1,
-      borderColor: '#E5E7EB',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 8, // fallback if you're not using gap
-    },
+    maxHeight: 48,
+    marginBottom: 16,
+  },
+  
+  filtersContent: {
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8, // or use marginRight if you're not using gap
+  },
+  
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8, // fallback if you're not using gap
+  },
+  
     
   filterChipActive: {
     backgroundColor: '#7C3AED',

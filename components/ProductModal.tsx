@@ -167,9 +167,11 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
       if (orderError) throw orderError;
 
-      // Handle payment method specific operations
+      // CRITICAL FIX: Only handle wallet operations for wallet payments
       if (method === 'wallet') {
-        // For wallet payment - deduct from wallet
+        console.log('Processing wallet payment - deducting from wallet');
+        
+        // Deduct from wallet
         const { error: walletError } = await supabase
           .from('profiles')
           .update({
@@ -195,8 +197,11 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
         // Refresh profile to get updated wallet balance
         await refreshProfile();
+        
       } else if (method === 'paystack') {
-        // For Paystack payment - DO NOT deduct from wallet, just create transaction record
+        console.log('Processing Paystack payment - NO wallet deduction');
+        
+        // For Paystack payment - ONLY create transaction record, DO NOT touch wallet
         const { error: transactionError } = await supabase
           .from('transactions')
           .insert({
@@ -210,7 +215,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
         if (transactionError) throw transactionError;
         
-        // No wallet balance update needed for Paystack payments
+        // DO NOT update wallet balance for Paystack payments
         console.log('Paystack payment processed - wallet balance unchanged');
       }
 
