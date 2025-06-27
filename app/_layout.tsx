@@ -7,6 +7,7 @@ import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_7
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-url-polyfill/auto';
 
+// Prevent the splash screen from auto-hiding before asset loading is complete
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -21,10 +22,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
+      // Hide the splash screen after fonts are loaded
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
 
+  // Keep the splash screen visible while fonts are loading
   if (!fontsLoaded && !fontError) {
     return null;
   }

@@ -69,10 +69,10 @@ const contactMethods = [
   {
     icon: Phone,
     title: 'Call Us',
-    subtitle: '+234 (0) 123 456 7890',
+    subtitle: '+234 (0) 902 711 3199',
     action: () => {
       // For web, we can't make actual calls, so show an alert
-      Alert.alert('Call Support', 'Please call +234 (0) 123 456 7890 for immediate assistance.');
+      Alert.alert('Call Support', 'Please call +234 (0) 902 711 3199 for immediate assistance.');
     },
     color: '#10B981',
   },

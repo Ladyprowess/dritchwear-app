@@ -13,9 +13,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
+    // Better session management for development
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,
+    // Add these for better localhost handling
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    flowType: 'implicit'
+  },
+  // Add realtime configuration if needed
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
   },
 });
 
