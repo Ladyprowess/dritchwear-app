@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, Modal, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, ShoppingCart, Wallet, CreditCard, Plus, Minus, Star } from 'lucide-react-native';
+import { X, ShoppingCart, Plus, Minus, Star, Wallet, CreditCard } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -80,6 +80,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
       return;
     }
 
+    // Check wallet balance
     if ((profile.wallet_balance || 0) < total) {
       Alert.alert(
         'Insufficient Balance',
@@ -166,8 +167,9 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
       if (orderError) throw orderError;
 
-      // Handle wallet payment - deduct from wallet
+      // Handle payment method specific operations
       if (method === 'wallet') {
+        // For wallet payment - deduct from wallet
         const { error: walletError } = await supabase
           .from('profiles')
           .update({
@@ -190,8 +192,11 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           });
 
         if (transactionError) throw transactionError;
-      } else {
-        // For Paystack payment, create transaction record
+
+        // Refresh profile to get updated wallet balance
+        await refreshProfile();
+      } else if (method === 'paystack') {
+        // For Paystack payment - DO NOT deduct from wallet, just create transaction record
         const { error: transactionError } = await supabase
           .from('transactions')
           .insert({
@@ -204,6 +209,9 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           });
 
         if (transactionError) throw transactionError;
+        
+        // No wallet balance update needed for Paystack payments
+        console.log('Paystack payment processed - wallet balance unchanged');
       }
 
       // Update product stock
@@ -215,9 +223,6 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
         .eq('id', product.id);
 
       if (stockError) throw stockError;
-
-      // Refresh profile to get updated wallet balance
-      await refreshProfile();
 
       Alert.alert(
         'Order Placed Successfully!',
@@ -240,23 +245,35 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     }
   };
 
-  const isOutOfStock = product.stock === 0;
-  const isOrderDisabled = isOutOfStock || processingOrder;
-
-  const getOrderButtonText = () => {
-    if (processingOrder) return 'Processing...';
-    if (isOutOfStock) return 'Out of Stock';
-    return `Order Now - ${formatCurrency(total)}`;
-  };
-
   const handleOrderPress = () => {
-    if (isOrderDisabled) return;
+    if (product.stock === 0) {
+      Alert.alert('Out of Stock', 'This product is currently out of stock');
+      return;
+    }
+
+    if (processingOrder) return;
     
     if (paymentMethod === 'wallet') {
       handleWalletPayment();
     } else {
       handlePaystackPayment();
     }
+  };
+
+  const isOutOfStock = product.stock === 0;
+  const isOrderDisabled = isOutOfStock || processingOrder;
+  const hasInsufficientBalance = paymentMethod === 'wallet' && (profile?.wallet_balance || 0) < total;
+
+  const getOrderButtonText = () => {
+    if (processingOrder) return 'Processing...';
+    if (isOutOfStock) return 'Out of Stock';
+    if (paymentMethod === 'wallet') {
+      if (hasInsufficientBalance) {
+        return 'Insufficient Balance';
+      }
+      return `Pay ${formatCurrency(total)} from Wallet`;
+    }
+    return `Pay ${formatCurrency(total)} with Card`;
   };
 
   return (
@@ -433,10 +450,25 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                     ]}>
                       Wallet
                     </Text>
-                    <Text style={styles.paymentMethodBalance}>
+                    <Text style={[
+                      styles.paymentMethodBalance,
+                      hasInsufficientBalance && { color: '#EF4444' }
+                    ]}>
                       Balance: {formatCurrency(profile?.wallet_balance || 0)}
+                      {hasInsufficientBalance && ' (Insufficient)'}
                     </Text>
                   </View>
+                  {hasInsufficientBalance && (
+                    <Pressable
+                      style={styles.fundWalletButton}
+                      onPress={() => {
+                        onClose();
+                        router.push('/(customer)/fund-wallet');
+                      }}
+                    >
+                      <Text style={styles.fundWalletText}>Fund</Text>
+                    </Pressable>
+                  )}
                 </Pressable>
 
                 <Pressable
@@ -455,7 +487,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                       Card/Bank Transfer
                     </Text>
                     <Text style={styles.paymentMethodBalance}>
-                      Pay with Paystack
+                      Pay securely with Paystack
                     </Text>
                   </View>
                 </Pressable>
@@ -466,9 +498,12 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           {/* Order Button */}
           <View style={styles.orderContainer}>
             <Pressable
-              style={[styles.orderButton, isOrderDisabled && styles.orderButtonDisabled]}
+              style={[
+                styles.orderButton, 
+                (isOrderDisabled || (paymentMethod === 'wallet' && hasInsufficientBalance)) && styles.orderButtonDisabled
+              ]}
               onPress={handleOrderPress}
-              disabled={isOrderDisabled}
+              disabled={isOrderDisabled || (paymentMethod === 'wallet' && hasInsufficientBalance)}
             >
               <ShoppingCart size={20} color="#FFFFFF" />
               <Text style={styles.orderButtonText}>
@@ -736,6 +771,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
+  },
+  fundWalletButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  fundWalletText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
   orderContainer: {
     paddingHorizontal: 20,
