@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import { formatCurrency } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -176,22 +176,23 @@ export default function AdminOrdersScreen() {
     fetchOrders();
   }, []);
 
-  const formatCurrencyForCustomer = (amount: number, customerCurrency?: string, originalAmount?: number) => {
-    const currency = customerCurrency || 'NGN';
+  // FIXED: Show actual payment currency for admin
+  const formatCurrencyForAdmin = (item: Order | CustomRequest) => {
+    // For custom orders, just return the budget range
+    if (isCustomRequest(item)) {
+      return item.budget_range;
+    }
+
+    // CRITICAL FIX: Use the actual payment currency from the order
+    const paymentCurrency = item.currency || 'NGN'; // Default to NGN if no currency stored
     
-    // If we have the original amount in customer's currency, use it
-    if (originalAmount && currency !== 'NGN') {
-      return formatCurrency(originalAmount, currency);
+    // If we have the original amount in the payment currency, use it
+    if (item.original_amount && item.currency) {
+      return formatCurrency(item.original_amount, paymentCurrency);
     }
     
-    // If customer uses NGN or we don't have original amount, use the NGN amount
-    if (currency === 'NGN') {
-      return formatCurrency(amount, 'NGN');
-    }
-    
-    // Convert from NGN to customer's currency
-    const convertedAmount = convertFromNGN(amount, currency);
-    return formatCurrency(convertedAmount, currency);
+    // Otherwise, the total is stored in NGN, so display as NGN
+    return formatCurrency(item.total, 'NGN');
   };
 
   const formatDate = (dateString: string) => {
@@ -257,15 +258,14 @@ export default function AdminOrdersScreen() {
           
           <View style={styles.orderRight}>
             <Text style={styles.orderAmount}>
-              {isCustom 
-                ? item.budget_range 
-                : formatCurrencyForCustomer(
-                    item.total, 
-                    item.profiles.preferred_currency || item.currency,
-                    item.original_amount
-                  )
-              }
+              {formatCurrencyForAdmin(item)}
             </Text>
+            {/* Show payment currency indicator for regular orders */}
+            {!isCustom && item.currency && item.currency !== 'NGN' && (
+              <Text style={styles.currencyIndicator}>
+                Paid in {item.currency}
+              </Text>
+            )}
             <View
               style={[
                 styles.statusBadge,
@@ -592,7 +592,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  currencyIndicator: {
+    fontSize: 10,
+    fontFamily: 'Inter-Regular',
+    color: '#7C3AED',
+    fontStyle: 'italic',
+    marginBottom: 4,
   },
   statusBadge: {
     paddingHorizontal: 8,

@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Users, Package, DollarSign, TrendingUp, Eye, MoreHorizontal } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import { formatCurrency } from '@/lib/currency';
 
 interface DashboardStats {
   totalUsers: number;
@@ -155,22 +155,23 @@ export default function AdminDashboardScreen() {
     fetchDashboardData();
   }, []);
 
-  const formatCurrencyForCustomer = (amount: number, customerCurrency?: string, originalAmount?: number) => {
-    const currency = customerCurrency || 'NGN';
+  // FIXED: Show actual payment currency, not customer preference
+  const formatCurrencyForAdmin = (order: RecentOrder) => {
+    // For custom orders, just return the budget range
+    if (isCustomOrder(order)) {
+      return order.budget_range || 'N/A';
+    }
+
+    // CRITICAL FIX: Use the actual payment currency from the order
+    const paymentCurrency = order.currency || 'NGN'; // Default to NGN if no currency stored
     
-    // If we have the original amount in customer's currency, use it
-    if (originalAmount && currency !== 'NGN') {
-      return formatCurrency(originalAmount, currency);
+    // If we have the original amount in the payment currency, use it
+    if (order.original_amount && order.currency) {
+      return formatCurrency(order.original_amount, paymentCurrency);
     }
     
-    // If customer uses NGN or we don't have original amount, use the NGN amount
-    if (currency === 'NGN') {
-      return formatCurrency(amount, 'NGN');
-    }
-    
-    // Convert from NGN to customer's currency
-    const convertedAmount = convertFromNGN(amount, currency);
-    return formatCurrency(convertedAmount, currency);
+    // Otherwise, the total is stored in NGN, so display as NGN
+    return formatCurrency(order.total, 'NGN');
   };
 
   const formatDate = (dateString: string) => {
@@ -319,15 +320,14 @@ export default function AdminDashboardScreen() {
                   </View>
                   <View style={styles.orderRight}>
                     <Text style={styles.orderAmount}>
-                      {isCustomOrder(order) 
-                        ? order.budget_range 
-                        : formatCurrencyForCustomer(
-                            order.total, 
-                            order.profiles.preferred_currency || order.currency,
-                            order.original_amount
-                          )
-                      }
+                      {formatCurrencyForAdmin(order)}
                     </Text>
+                    {/* Show payment currency indicator for regular orders */}
+                    {!isCustomOrder(order) && order.currency && order.currency !== 'NGN' && (
+                      <Text style={styles.currencyIndicator}>
+                        Paid in {order.currency}
+                      </Text>
+                    )}
                     <View
                       style={[
                         styles.statusBadge,
@@ -559,6 +559,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
+  },
+  currencyIndicator: {
+    fontSize: 10,
+    fontFamily: 'Inter-Regular',
+    color: '#7C3AED',
+    fontStyle: 'italic',
   },
   statusBadge: {
     paddingHorizontal: 8,
