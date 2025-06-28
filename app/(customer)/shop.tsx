@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, FlatList, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, FlatList, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -234,111 +234,119 @@ export default function ShopScreen() {
         transparent
         onRequestClose={() => setShowFilterModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Filter Products</Text>
-            
-            {/* Size Filter */}
-            <Text style={styles.filterLabel}>Filter by Size</Text>
-            <View style={styles.filterOptions}>
-              {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView 
+            contentContainerStyle={styles.modalScrollContainer}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Filter Products</Text>
+              
+              {/* Size Filter */}
+              <Text style={styles.filterLabel}>Filter by Size</Text>
+              <View style={styles.filterGroup}>
+                {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+                  <Pressable
+                    key={size}
+                    onPress={() =>
+                      setSelectedSizes(prev =>
+                        prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size]
+                      )
+                    }
+                    style={[
+                      styles.filterChip,
+                      selectedSizes.includes(size) && styles.filterChipActive,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      selectedSizes.includes(size) && styles.filterChipTextActive,
+                    ]}>
+                      {size}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Color Filter */}
+              <Text style={styles.filterLabel}>Filter by Color</Text>
+              <View style={styles.filterGroup}>
+                {['Black', 'White', 'Navy', 'Grey', 'Beige', 'Brown'].map(color => (
+                  <Pressable
+                    key={color}
+                    onPress={() =>
+                      setSelectedColors(prev =>
+                        prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]
+                      )
+                    }
+                    style={[
+                      styles.filterChip,
+                      selectedColors.includes(color) && styles.filterChipActive,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.filterChipText,
+                      selectedColors.includes(color) && styles.filterChipTextActive,
+                    ]}>
+                      {color}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              {/* Price Range Filter */}
+              <Text style={styles.filterLabel}>Price Range (₦)</Text>
+              <View style={styles.priceInputs}>
+                <TextInput
+                  placeholder="Min Price"
+                  keyboardType="numeric"
+                  style={styles.priceInput}
+                  value={minPrice !== null ? minPrice.toString() : ''}
+                  onChangeText={(text) => {
+                    const parsed = parseInt(text);
+                    setMinPrice(isNaN(parsed) ? null : parsed);
+                  }}
+                />
+                <TextInput
+                  placeholder="Max Price"
+                  keyboardType="numeric"
+                  style={styles.priceInput}
+                  value={maxPrice !== null ? maxPrice.toString() : ''}
+                  onChangeText={(text) => {
+                    const parsed = parseInt(text);
+                    setMaxPrice(isNaN(parsed) ? null : parsed);
+                  }}
+                />
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.modalActions}>
                 <Pressable
-                  key={size}
-                  onPress={() =>
-                    setSelectedSizes(prev =>
-                      prev.includes(size) ? prev.filter(s => s !== size) : [...prev, size]
-                    )
-                  }
-                  style={[
-                    styles.filterChip,
-                    selectedSizes.includes(size) && styles.filterChipActive
-                  ]}
+                  style={styles.applyButton}
+                  onPress={() => setShowFilterModal(false)}
                 >
-                  <Text style={[
-                    styles.filterChipText,
-                    selectedSizes.includes(size) && styles.filterChipTextActive
-                  ]}>
-                    {size}
-                  </Text>
+                  <Text style={styles.applyButtonText}>Apply Filter</Text>
                 </Pressable>
-              ))}
-            </View>
 
-            {/* Color Filter */}
-            <Text style={[styles.filterLabel, { marginTop: 16 }]}>Filter by Color</Text>
-            <View style={styles.filterOptions}>
-              {['Black', 'White', 'Navy', 'Grey', 'Beige', 'Brown'].map(color => (
                 <Pressable
-                  key={color}
-                  onPress={() =>
-                    setSelectedColors(prev =>
-                      prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]
-                    )
-                  }
-                  style={[
-                    styles.filterChip,
-                    selectedColors.includes(color) && styles.filterChipActive
-                  ]}
+                  style={styles.clearButton}
+                  onPress={() => {
+                    setSelectedSizes([]);
+                    setSelectedColors([]);
+                    setMaxPrice(null);
+                    setMinPrice(null);
+                    setShowFilterModal(false);
+                  }}
                 >
-                  <Text style={[
-                    styles.filterChipText,
-                    selectedColors.includes(color) && styles.filterChipTextActive
-                  ]}>
-                    {color}
-                  </Text>
+                  <Text style={styles.clearButtonText}>Clear Filter</Text>
                 </Pressable>
-              ))}
+              </View>
             </View>
-
-            {/* Price Range Filter */}
-            <Text style={[styles.filterLabel, { marginTop: 16 }]}>Price Range (₦)</Text>
-            <View style={styles.priceInputs}>
-              <TextInput
-                placeholder="Min"
-                keyboardType="numeric"
-                style={[styles.priceInput]}
-                value={minPrice !== null ? minPrice.toString() : ''}
-                onChangeText={(text) => {
-                  const parsed = parseInt(text);
-                  setMinPrice(isNaN(parsed) ? null : parsed);
-                }}
-              />
-              <TextInput
-                placeholder="Max"
-                keyboardType="numeric"
-                style={[styles.priceInput]}
-                value={maxPrice !== null ? maxPrice.toString() : ''}
-                onChangeText={(text) => {
-                  const parsed = parseInt(text);
-                  setMaxPrice(isNaN(parsed) ? null : parsed);
-                }}
-              />
-            </View>
-
-            {/* Action Buttons */}
-            <View style={styles.modalActions}>
-              <Pressable
-                style={styles.applyButton}
-                onPress={() => setShowFilterModal(false)}
-              >
-                <Text style={styles.applyButtonText}>Apply Filter</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.clearButton}
-                onPress={() => {
-                  setSelectedSizes([]);
-                  setSelectedColors([]);
-                  setMaxPrice(null);
-                  setMinPrice(null);
-                  setShowFilterModal(false);
-                }}
-              >
-                <Text style={styles.clearButtonText}>Clear Filter</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Product Modal */}
@@ -443,9 +451,8 @@ const styles = StyleSheet.create({
     zIndex: 1,
     paddingTop: 4,
     paddingBottom: 50,
-    backgroundColor: '#F9FAFB', // ✅ Optional: to ensure layering works
+    backgroundColor: '#F9FAFB',
   },
-  
   categoriesContent: {
     paddingHorizontal: 20,
     paddingVertical: 4,
@@ -476,11 +483,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   productsContainer: {
-    paddingTop: 40, // ✅ Extra space to push content below categories
+    paddingTop: 40,
     paddingHorizontal: 20,
     paddingBottom: 100,
   },
-  
   productRow: {
     justifyContent: 'space-between',
   },
@@ -561,6 +567,14 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Medium',
     color: '#7C3AED',
   },
+  stockInfo: {
+    alignItems: 'flex-end',
+  },
+  stockText: {
+    fontSize: 10,
+    fontFamily: 'Inter-Medium',
+    color: '#6B7280',
+  },
   addToCartButton: {
     width: 32,
     height: 32,
@@ -597,55 +611,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
-    color: '#1F2937',
-  },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 40,
-    fontSize: 14,
-  },
-  modalContent: {
-    marginTop: 60,
-    marginHorizontal: 20,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    elevation: 5,
-  } ,
-  chip: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginRight: 8,
-  },
-  chipActive: {
-    backgroundColor: '#7C3AED',
-    borderColor: '#7C3AED',
-  },
-  chipText: {
-    fontSize: 13,
-    color: '#374151',
-  },
-  chipTextActive: {
-    color: '#fff',
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  
   cartSummaryText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
@@ -661,5 +626,121 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
+  },
+  
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalScrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  modalContent: {
+    marginHorizontal: 20,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    color: '#1F2937',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  
+  // Filter styles
+  filterLabel: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+    marginBottom: 12,
+    marginTop: 16,
+  },
+  filterGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  filterChipActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  filterChipText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#6B7280',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  
+  // Price input styles
+  priceInputs: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  priceInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#1F2937',
+    backgroundColor: '#F9FAFB',
+  },
+  
+  // Button styles
+  modalActions: {
+    marginTop: 24,
+    gap: 12,
+  },
+  applyButton: {
+    backgroundColor: '#7C3AED',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  applyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+  },
+  clearButton: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  clearButtonText: {
+    color: '#1F2937',
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
   },
 });
