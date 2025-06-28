@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { formatCurrency } from '@/lib/currency';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -14,6 +14,7 @@ interface Order {
   payment_status: string;
   created_at: string;
   currency?: string;
+  original_amount?: number;
   profiles: {
     full_name: string;
     email: string;
@@ -72,6 +73,7 @@ export default function AdminOrdersScreen() {
           delivery_address,
           created_at,
           currency,
+          original_amount,
           profiles!inner(full_name, email, wallet_balance, preferred_currency)
         `)
         .order('created_at', { ascending: false });
@@ -174,6 +176,24 @@ export default function AdminOrdersScreen() {
     fetchOrders();
   }, []);
 
+  const formatCurrencyForCustomer = (amount: number, customerCurrency?: string, originalAmount?: number) => {
+    const currency = customerCurrency || 'NGN';
+    
+    // If we have the original amount in customer's currency, use it
+    if (originalAmount && currency !== 'NGN') {
+      return formatCurrency(originalAmount, currency);
+    }
+    
+    // If customer uses NGN or we don't have original amount, use the NGN amount
+    if (currency === 'NGN') {
+      return formatCurrency(amount, 'NGN');
+    }
+    
+    // Convert from NGN to customer's currency
+    const convertedAmount = convertFromNGN(amount, currency);
+    return formatCurrency(convertedAmount, currency);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -208,28 +228,10 @@ export default function AdminOrdersScreen() {
     return !('order_status' in item);
   };
 
-  const formatOrderAmount = (item: Order | CustomRequest) => {
-    const isCustom = isCustomRequest(item);
-    
-    // Get the appropriate currency
-    const currency = item.currency || 
-                    item.profiles?.preferred_currency || 
-                    'NGN';
-    
-    if (isCustom) {
-      return item.budget_range || '';
-    } else {
-      return formatCurrency(item.total, currency);
-    }
-  };
-
   const renderOrderItem = (item: Order | CustomRequest) => {
     const isCustom = isCustomRequest(item);
     const status = isCustom ? item.status : item.order_status;
-    const statusColor = getStatusColor(status || '');
-    const orderNumber = isCustom ? 
-      `CO-${item.id.slice(0, 8).toUpperCase()}` : 
-      `OR-${item.id.slice(0, 8).toUpperCase()}`;
+    const statusColor = getStatusColor(status);
 
     return (
       <Pressable 
@@ -245,7 +247,7 @@ export default function AdminOrdersScreen() {
               </View>
             )}
             <Text style={styles.orderId}>
-              {isCustom ? item.title : orderNumber}
+              {isCustom ? item.title : `#${item.id.slice(0, 8)}`}
             </Text>
             <Text style={styles.customerName}>
               {item.profiles.full_name || item.profiles.email}
@@ -255,7 +257,14 @@ export default function AdminOrdersScreen() {
           
           <View style={styles.orderRight}>
             <Text style={styles.orderAmount}>
-              {formatOrderAmount(item)}
+              {isCustom 
+                ? item.budget_range 
+                : formatCurrencyForCustomer(
+                    item.total, 
+                    item.profiles.preferred_currency || item.currency,
+                    item.original_amount
+                  )
+              }
             </Text>
             <View
               style={[
@@ -269,7 +278,7 @@ export default function AdminOrdersScreen() {
                   { color: statusColor }
                 ]}
               >
-                {status?.charAt(0).toUpperCase() + status?.slice(1).replace('_', ' ')}
+                {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
               </Text>
             </View>
           </View>

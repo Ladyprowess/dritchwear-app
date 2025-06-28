@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Users, Package, DollarSign, TrendingUp, Eye, MoreHorizontal } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { formatCurrency } from '@/lib/currency';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface DashboardStats {
   totalUsers: number;
@@ -23,6 +23,7 @@ interface RecentOrder {
   order_status: string;
   created_at: string;
   currency?: string;
+  original_amount?: number;
   profiles: {
     full_name: string;
     email: string;
@@ -62,7 +63,7 @@ export default function AdminDashboardScreen() {
       // Fetch order stats
       const { data: orders } = await supabase
         .from('orders')
-        .select('total, order_status, payment_status, currency');
+        .select('total, order_status, payment_status, currency, original_amount');
 
       // Fetch custom requests stats
       const { data: customRequests } = await supabase
@@ -86,6 +87,7 @@ export default function AdminDashboardScreen() {
           delivery_address,
           created_at,
           currency,
+          original_amount,
           profiles!inner(full_name, email, wallet_balance, preferred_currency)
         `)
         .order('created_at', { ascending: false })
@@ -153,6 +155,24 @@ export default function AdminDashboardScreen() {
     fetchDashboardData();
   }, []);
 
+  const formatCurrencyForCustomer = (amount: number, customerCurrency?: string, originalAmount?: number) => {
+    const currency = customerCurrency || 'NGN';
+    
+    // If we have the original amount in customer's currency, use it
+    if (originalAmount && currency !== 'NGN') {
+      return formatCurrency(originalAmount, currency);
+    }
+    
+    // If customer uses NGN or we don't have original amount, use the NGN amount
+    if (currency === 'NGN') {
+      return formatCurrency(amount, 'NGN');
+    }
+    
+    // Convert from NGN to customer's currency
+    const convertedAmount = convertFromNGN(amount, currency);
+    return formatCurrency(convertedAmount, currency);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -186,17 +206,6 @@ export default function AdminDashboardScreen() {
 
   const isCustomOrder = (order: RecentOrder) => {
     return !!order.title; // Custom orders have title field
-  };
-
-  const formatOrderAmount = (order: RecentOrder) => {
-    // Use the order's currency if available, otherwise use NGN
-    const currency = order.currency || 'NGN';
-    
-    if (isCustomOrder(order)) {
-      return order.budget_range || '';
-    } else {
-      return formatCurrency(order.total, currency);
-    }
   };
 
   const statCards = [
@@ -310,7 +319,14 @@ export default function AdminDashboardScreen() {
                   </View>
                   <View style={styles.orderRight}>
                     <Text style={styles.orderAmount}>
-                      {formatOrderAmount(order)}
+                      {isCustomOrder(order) 
+                        ? order.budget_range 
+                        : formatCurrencyForCustomer(
+                            order.total, 
+                            order.profiles.preferred_currency || order.currency,
+                            order.original_amount
+                          )
+                      }
                     </Text>
                     <View
                       style={[
