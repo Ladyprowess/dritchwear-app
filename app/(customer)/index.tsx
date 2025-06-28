@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { Wallet, Plus, Sparkles, ShoppingBag, Star, ShoppingCart } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '@/components/ProductModal';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Product {
   id: string;
@@ -118,12 +119,26 @@ export default function HomeScreen() {
     }
   }, [profile]);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  // Updated formatCurrency function to handle product prices in user's preferred currency
+  const formatProductPrice = (priceInNGN: number) => {
+    if (!profile?.preferred_currency || profile.preferred_currency === 'NGN') {
+      return formatCurrency(priceInNGN, 'NGN');
+    }
+    
+    const convertedPrice = convertFromNGN(priceInNGN, profile.preferred_currency);
+    return formatCurrency(convertedPrice, profile.preferred_currency);
+  };
+
+  // Get wallet balance in user's preferred currency
+  const getWalletBalance = () => {
+    if (!profile) return formatCurrency(0, 'NGN');
+    
+    const currency = profile.preferred_currency || 'NGN';
+    const balance = currency === 'NGN' ? 
+      profile.wallet_balance : 
+      convertFromNGN(profile.wallet_balance, currency);
+    
+    return formatCurrency(balance, currency);
   };
 
   const handleFundWallet = () => {
@@ -182,7 +197,7 @@ export default function HomeScreen() {
             <View style={styles.walletContent}>
               <Wallet size={20} color="#FFFFFF" />
               <Text style={styles.walletBalance}>
-                {formatCurrency(profile?.wallet_balance || 0)}
+                {getWalletBalance()}
               </Text>
             </View>
           </LinearGradient>
@@ -249,7 +264,7 @@ export default function HomeScreen() {
                       {item.name}
                     </Text>
                     <Text style={styles.productPrice}>
-                      {formatCurrency(item.price)}
+                      {formatProductPrice(item.price)}
                     </Text>
                     <View style={styles.productFooter}>
                       <View style={styles.ratingContainer}>

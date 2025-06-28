@@ -6,17 +6,36 @@ export const DELIVERY_FEES = {
   international: 15000,
 } as const;
 
-export function calculateDeliveryFee(location: string): number {
-  if (!location) return DELIVERY_FEES.lagos;
+// Currency-specific delivery fees (in local currency)
+export const DELIVERY_FEES_BY_CURRENCY: Record<string, { local: number; national: number; international: number }> = {
+  NGN: { local: 3500, national: 5000, international: 15000 },
+  USD: { local: 5, national: 8, international: 25 },
+  EUR: { local: 4, national: 7, international: 20 },
+  GBP: { local: 4, national: 6, international: 18 },
+  CAD: { local: 6, national: 9, international: 28 },
+  AUD: { local: 6, national: 9, international: 30 },
+  JPY: { local: 500, national: 800, international: 2500 },
+  CHF: { local: 4, national: 7, international: 20 },
+  CNY: { local: 30, national: 50, international: 150 },
+  INR: { local: 300, national: 500, international: 1500 },
+  ZAR: { local: 80, national: 120, international: 400 },
+  KES: { local: 500, national: 800, international: 2500 },
+  GHS: { local: 30, national: 50, international: 150 },
+};
+
+export function calculateDeliveryFee(location: string, currency: string = 'NGN'): number {
+  const fees = DELIVERY_FEES_BY_CURRENCY[currency] || DELIVERY_FEES_BY_CURRENCY.NGN;
+  
+  if (!location) return fees.local;
   
   const normalizedLocation = location.toLowerCase().trim();
   
-  // Check for Lagos specifically
-  if (normalizedLocation.includes('lagos')) {
-    return DELIVERY_FEES.lagos;
+  // Check for Lagos specifically (for NGN) or local delivery for other currencies
+  if (currency === 'NGN' && normalizedLocation.includes('lagos')) {
+    return fees.local;
   }
   
-  // Check for other Nigerian states/cities
+  // Check for other Nigerian states/cities (for NGN) or national delivery
   const nigerianStates = [
     'abia', 'adamawa', 'akwa ibom', 'anambra', 'bauchi', 'bayelsa', 'benue', 'borno',
     'cross river', 'delta', 'ebonyi', 'edo', 'ekiti', 'enugu', 'gombe', 'imo',
@@ -34,24 +53,34 @@ export function calculateDeliveryFee(location: string): number {
     'gusau', 'yola', 'minna', 'birnin kebbi', 'lokoja', 'osogbo'
   ];
   
-  // Check if location contains Nigeria or any Nigerian state/city
-  if (normalizedLocation.includes('nigeria') || 
-      nigerianStates.some(state => normalizedLocation.includes(state)) ||
-      nigerianCities.some(city => normalizedLocation.includes(city))) {
-    return DELIVERY_FEES.outside_lagos;
+  // For NGN, check if location is in Nigeria
+  if (currency === 'NGN') {
+    if (normalizedLocation.includes('nigeria') || 
+        nigerianStates.some(state => normalizedLocation.includes(state)) ||
+        nigerianCities.some(city => normalizedLocation.includes(city))) {
+      return fees.national;
+    }
+    return fees.international;
   }
   
-  // If not in Nigeria, international shipping
-  return DELIVERY_FEES.international;
+  // For other currencies, assume national delivery unless specified as international
+  if (normalizedLocation.includes('international') || 
+      normalizedLocation.includes('worldwide') ||
+      normalizedLocation.includes('global')) {
+    return fees.international;
+  }
+  
+  return fees.national;
 }
 
 export function calculateServiceFee(subtotal: number): number {
-  return Math.round(subtotal * SERVICE_FEE_PERCENTAGE);
+  return Math.round(subtotal * SERVICE_FEE_PERCENTAGE * 100) / 100;
 }
 
 export function calculateOrderTotal(
   subtotal: number,
   location: string,
+  currency: string = 'NGN',
   discountAmount: number = 0
 ): {
   subtotal: number;
@@ -59,10 +88,11 @@ export function calculateOrderTotal(
   deliveryFee: number;
   discountAmount: number;
   total: number;
+  currency: string;
 } {
   const discountedSubtotal = subtotal - discountAmount;
   const serviceFee = calculateServiceFee(discountedSubtotal);
-  const deliveryFee = calculateDeliveryFee(location);
+  const deliveryFee = calculateDeliveryFee(location, currency);
   const total = discountedSubtotal + serviceFee + deliveryFee;
 
   return {
@@ -70,6 +100,7 @@ export function calculateOrderTotal(
     serviceFee,
     deliveryFee,
     discountAmount,
-    total,
+    total: Math.round(total * 100) / 100, // Round to 2 decimal places
+    currency,
   };
 }

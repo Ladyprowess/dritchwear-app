@@ -18,8 +18,11 @@ import {
   Lock,
   Eye,
   EyeOff,
-  History
+  History,
+  Globe
 } from 'lucide-react-native';
+import CurrencySelector from '@/components/CurrencySelector';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 export default function ProfileScreen() {
   const { profile, refreshProfile } = useAuth();
@@ -30,6 +33,7 @@ export default function ProfileScreen() {
     full_name: profile?.full_name || '',
     phone: profile?.phone || '',
     location: profile?.location || '',
+    preferred_currency: profile?.preferred_currency || 'NGN',
   });
   const [passwordData, setPasswordData] = useState({
     newPassword: '',
@@ -65,6 +69,7 @@ export default function ProfileScreen() {
       full_name: profile.full_name || '',
       phone: profile.phone || '',
       location: profile.location || '',
+      preferred_currency: profile.preferred_currency || 'NGN',
     });
     setEditing(false);
   };
@@ -129,13 +134,14 @@ export default function ProfileScreen() {
     router.push('/(customer)/help-support');
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  const handleCurrencyChange = (currencyCode: string) => {
+    setFormData(prev => ({ ...prev, preferred_currency: currencyCode }));
   };
+
+  // Get wallet balance in preferred currency
+  const walletBalanceInPreferredCurrency = profile.preferred_currency === 'NGN' ? 
+    profile.wallet_balance : 
+    convertFromNGN(profile.wallet_balance, profile.preferred_currency);
 
   const menuItems = [
     { icon: History, title: 'Wallet History', subtitle: 'View all transactions', onPress: handleWalletHistory },
@@ -202,7 +208,7 @@ export default function ProfileScreen() {
             <View style={styles.walletContainer}>
               <Wallet size={16} color="#7C3AED" />
               <Text style={styles.walletBalance}>
-                {formatCurrency(profile.wallet_balance || 0)}
+                {formatCurrency(walletBalanceInPreferredCurrency, profile.preferred_currency || 'NGN')}
               </Text>
             </View>
           </View>
@@ -330,6 +336,26 @@ export default function ProfileScreen() {
                   ) : (
                     <Text style={styles.detailValue}>
                       {profile.location || 'Not provided'}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Currency Preference */}
+                <View style={styles.detailItem}>
+                  <View style={styles.detailHeader}>
+                    <Globe size={20} color="#6B7280" />
+                    <Text style={styles.detailLabel}>Preferred Currency</Text>
+                  </View>
+                  {editing ? (
+                    <CurrencySelector
+                      selectedCurrency={formData.preferred_currency}
+                      onCurrencyChange={handleCurrencyChange}
+                      showLabel={false}
+                      style={styles.currencySelector}
+                    />
+                  ) : (
+                    <Text style={styles.detailValue}>
+                      {profile.preferred_currency || 'NGN'}
                     </Text>
                   )}
                 </View>
@@ -573,6 +599,10 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 4,
+  },
+  currencySelector: {
+    marginLeft: 28,
+    marginTop: 8,
   },
   menuContainer: {
     paddingHorizontal: 20,

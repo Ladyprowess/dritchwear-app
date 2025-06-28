@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { Search, Filter, Star, ShoppingCart } from 'lucide-react-native';
 import ProductModal from '@/components/ProductModal';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Product {
   id: string;
@@ -87,12 +88,12 @@ export default function ShopScreen() {
     setFilteredProducts(filtered);
   }, [products, selectedCategory, searchQuery, selectedSizes, selectedColors, maxPrice, minPrice]);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  // Helper function to get product price in user's preferred currency
+  const getProductPriceInUserCurrency = (priceInNGN: number) => {
+    if (!profile?.preferred_currency || profile.preferred_currency === 'NGN') {
+      return priceInNGN;
+    }
+    return convertFromNGN(priceInNGN, profile.preferred_currency);
   };
 
   const handleProductPress = (product: Product) => {
@@ -104,50 +105,55 @@ export default function ShopScreen() {
     fetchProducts(); // Refresh products to update stock
   };
 
-  const renderProduct = ({ item: product }: { item: Product }) => (
-    <Pressable 
-      style={styles.productCard}
-      onPress={() => handleProductPress(product)}
-    >
-      <Image
-        source={{ uri: product.image_url }}
-        style={styles.productImage}
-        resizeMode="cover"
-      />
-      <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={2}>
-          {product.name}
-        </Text>
-        <Text style={styles.productDescription} numberOfLines={2}>
-          {product.description}
-        </Text>
-        <View style={styles.productMeta}>
-          <Text style={styles.productPrice}>
-            {formatCurrency(product.price)}
+  const renderProduct = ({ item: product }: { item: Product }) => {
+    const userCurrency = profile?.preferred_currency || 'NGN';
+    const productPrice = getProductPriceInUserCurrency(product.price);
+    
+    return (
+      <Pressable 
+        style={styles.productCard}
+        onPress={() => handleProductPress(product)}
+      >
+        <Image
+          source={{ uri: product.image_url }}
+          style={styles.productImage}
+          resizeMode="cover"
+        />
+        <View style={styles.productInfo}>
+          <Text style={styles.productName} numberOfLines={2}>
+            {product.name}
           </Text>
-          <View style={styles.ratingContainer}>
-            <Star size={12} color="#F59E0B" fill="#F59E0B" />
-            <Text style={styles.ratingText}>4.8</Text>
-          </View>
-        </View>
-        <View style={styles.productVariants}>
-          <View style={styles.sizesContainer}>
-            {product.sizes.slice(0, 3).map((size, index) => (
-              <Text key={index} style={styles.sizeText}>{size}</Text>
-            ))}
-            {product.sizes.length > 3 && (
-              <Text style={styles.moreText}>+{product.sizes.length - 3}</Text>
-            )}
-          </View>
-          <View style={styles.stockInfo}>
-            <Text style={styles.stockText}>
-              {product.stock > 0 ? `${product.stock} left` : 'Out of stock'}
+          <Text style={styles.productDescription} numberOfLines={2}>
+            {product.description}
+          </Text>
+          <View style={styles.productMeta}>
+            <Text style={styles.productPrice}>
+              {formatCurrency(productPrice, userCurrency)}
             </Text>
+            <View style={styles.ratingContainer}>
+              <Star size={12} color="#F59E0B" fill="#F59E0B" />
+              <Text style={styles.ratingText}>4.8</Text>
+            </View>
+          </View>
+          <View style={styles.productVariants}>
+            <View style={styles.sizesContainer}>
+              {product.sizes.slice(0, 3).map((size, index) => (
+                <Text key={index} style={styles.sizeText}>{size}</Text>
+              ))}
+              {product.sizes.length > 3 && (
+                <Text style={styles.moreText}>+{product.sizes.length - 3}</Text>
+              )}
+            </View>
+            <View style={styles.stockInfo}>
+              <Text style={styles.stockText}>
+                {product.stock > 0 ? `${product.stock} left` : 'Out of stock'}
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
-    </Pressable>
-  );
+      </Pressable>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -297,8 +303,10 @@ export default function ShopScreen() {
                 ))}
               </View>
 
-              {/* Price Range Filter */}
-              <Text style={styles.filterLabel}>Price Range (₦)</Text>
+              {/* Price Range Filter - Show in user's preferred currency */}
+              <Text style={styles.filterLabel}>
+                Price Range ({profile?.preferred_currency || 'NGN'})
+              </Text>
               <View style={styles.priceInputs}>
                 <TextInput
                   placeholder="Min Price"

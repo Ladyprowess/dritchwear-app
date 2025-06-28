@@ -6,7 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/fees';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 import PaystackPayment from '@/components/PaystackPayment';
+import PayPalPayment from '@/components/PayPalPayment';
+
+// import PayPalPayment from '@/components/PayPalPayment'; // You'll need to create this component
 
 interface Product {
   id: string;
@@ -33,9 +37,13 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
   const [quantity, setQuantity] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'paystack'>('wallet');
+  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'card'>('wallet');
   const [processingOrder, setProcessingOrder] = useState(false);
-  const [showPaystack, setShowPaystack] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  // Get user's preferred currency
+  const userCurrency = profile?.preferred_currency || 'NGN';
+  const isNairaCurrency = userCurrency === 'NGN';
 
   React.useEffect(() => {
     if (product) {
@@ -44,28 +52,49 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
       setQuantity(1);
       setPaymentMethod('wallet');
       setProcessingOrder(false);
-      setShowPaystack(false);
+      setShowPaymentModal(false);
     }
   }, [product]);
 
   if (!product) return null;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  // Convert product price to user's preferred currency
+  const getProductPriceInUserCurrency = (priceInNGN: number) => {
+    if (userCurrency === 'NGN') {
+      return priceInNGN;
+    }
+    return convertFromNGN(priceInNGN, userCurrency);
   };
 
+  const productPrice = getProductPriceInUserCurrency(product.price);
+
   const calculateTotal = () => {
-    const subtotal = product.price * quantity;
+    const subtotal = productPrice * quantity;
     const location = profile?.location || 'Lagos, Nigeria';
+    
+    // For non-NGN currencies, we might need to adjust the fee calculation
+    if (userCurrency !== 'NGN') {
+      // Convert fees from NGN to user currency
+      const ngnSubtotal = product.price * quantity;
+      const ngnFees = calculateOrderTotal(ngnSubtotal, location);
+      
+      return {
+        subtotal,
+        serviceFee: convertFromNGN(ngnFees.serviceFee, userCurrency),
+        deliveryFee: convertFromNGN(ngnFees.deliveryFee, userCurrency),
+        total: subtotal + convertFromNGN(ngnFees.serviceFee, userCurrency) + convertFromNGN(ngnFees.deliveryFee, userCurrency)
+      };
+    }
     
     return calculateOrderTotal(subtotal, location);
   };
 
   const { subtotal, serviceFee, deliveryFee, total } = calculateTotal();
+
+  // Convert wallet balance to user's preferred currency for display
+  const walletBalanceInUserCurrency = userCurrency === 'NGN' 
+    ? (profile?.wallet_balance || 0)
+    : convertFromNGN(profile?.wallet_balance || 0, userCurrency);
 
   const handleQuantityChange = (change: number) => {
     const newQuantity = quantity + change;
@@ -80,11 +109,14 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
       return;
     }
 
-    // Check wallet balance
-    if ((profile.wallet_balance || 0) < total) {
+    // For wallet payments, always convert to NGN since wallet balance is stored in NGN
+    const totalInNGN = userCurrency === 'NGN' ? total : (product.price * quantity + calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').serviceFee + calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').deliveryFee);
+
+    // Check wallet balance (always in NGN)
+    if ((profile.wallet_balance || 0) < totalInNGN) {
       Alert.alert(
         'Insufficient Balance',
-        `Your wallet balance is ${formatCurrency(profile.wallet_balance || 0)}. You need ${formatCurrency(total)} to complete this order.`,
+        `Your wallet balance is ${formatCurrency(walletBalanceInUserCurrency, userCurrency)}. You need ${formatCurrency(total, userCurrency)} to complete this order.`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Fund Wallet', onPress: () => {
@@ -97,42 +129,59 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     }
 
     setProcessingOrder(true);
-    await processOrder('wallet');
+    await processOrder('wallet', totalInNGN);
   };
 
-  const handlePaystackPayment = () => {
+  const handleCardPayment = () => {
     if (!user || !profile) {
       Alert.alert('Authentication Required', 'Please log in to place an order');
       return;
     }
 
-    if (!process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY) {
+    // Check if payment gateway is configured
+    const hasPaystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
+    const hasPayPalKey = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
+
+    if (isNairaCurrency && !hasPaystackKey) {
       Alert.alert(
         'Payment Not Available',
-        'Online payment is not configured. Please use wallet payment or contact support.',
+        'Paystack payment is not configured. Please use wallet payment or contact support.',
         [{ text: 'OK' }]
       );
       return;
     }
 
-    console.log('Opening Paystack modal for payment...');
-    setShowPaystack(true);
+    if (!isNairaCurrency && !hasPayPalKey) {
+      Alert.alert(
+        'Payment Not Available',
+        'PayPal payment is not configured. Please use wallet payment or contact support.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    console.log(`Opening ${isNairaCurrency ? 'Paystack' : 'PayPal'} modal for payment...`);
+    setShowPaymentModal(true);
   };
 
-  const handlePaystackSuccess = async (response: any) => {
-    console.log('Paystack payment successful:', response);
-    setShowPaystack(false);
+  const handlePaymentSuccess = async (response: any) => {
+    console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment successful:`, response);
+    setShowPaymentModal(false);
     setProcessingOrder(true);
-    await processOrder('paystack', response.reference);
+    
+    // For card payments, always use the amount in the original currency
+    const totalForOrder = userCurrency === 'NGN' ? total : (product.price * quantity + calculateOrderTotal(product.price * quantity, profile?.location || 'Lagos, Nigeria').serviceFee + calculateOrderTotal(product.price * quantity, profile?.location || 'Lagos, Nigeria').deliveryFee);
+    
+    await processOrder('card', totalForOrder, response.reference || response.id);
   };
 
-  const handlePaystackCancel = () => {
-    console.log('Paystack payment cancelled');
-    setShowPaystack(false);
+  const handlePaymentCancel = () => {
+    console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment cancelled`);
+    setShowPaymentModal(false);
     Alert.alert('Payment Cancelled', 'Your payment was cancelled');
   };
 
-  const processOrder = async (method: 'wallet' | 'paystack', reference?: string) => {
+  const processOrder = async (method: 'wallet' | 'card', orderTotal: number, reference?: string) => {
     try {
       if (!user || !profile) {
         throw new Error('User not authenticated');
@@ -140,42 +189,45 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
       console.log('Processing order with method:', method);
 
-      // Create order
+      // Create order - store amounts in the original currency but convert to NGN for backend
+      const orderData = {
+        user_id: user.id,
+        items: [{
+          product_id: product.id,
+          name: product.name,
+          price: product.price, // Always store original NGN price
+          quantity,
+          size: selectedSize,
+          color: selectedColor,
+        }],
+        subtotal: userCurrency === 'NGN' ? subtotal : product.price * quantity,
+        service_fee: userCurrency === 'NGN' ? serviceFee : calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').serviceFee,
+        delivery_fee: userCurrency === 'NGN' ? deliveryFee : calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').deliveryFee,
+        total: userCurrency === 'NGN' ? total : orderTotal,
+        payment_method: method === 'wallet' ? 'wallet' : (isNairaCurrency ? 'paystack' : 'paypal'),
+        payment_status: 'paid',
+        order_status: 'pending',
+        delivery_address: profile.location || 'Lagos, Nigeria',
+        currency: userCurrency, // Store the currency used for the order
+      };
+
       const { data: order, error: orderError } = await supabase
         .from('orders')
-        .insert({
-          user_id: user.id,
-          items: [{
-            product_id: product.id,
-            name: product.name,
-            price: product.price,
-            quantity,
-            size: selectedSize,
-            color: selectedColor,
-          }],
-          subtotal,
-          service_fee: serviceFee,
-          delivery_fee: deliveryFee,
-          total,
-          payment_method: method,
-          payment_status: 'paid',
-          order_status: 'pending',
-          delivery_address: profile.location || 'Lagos, Nigeria',
-        })
+        .insert(orderData)
         .select()
         .single();
 
       if (orderError) throw orderError;
 
-      // CRITICAL FIX: Only handle wallet operations for wallet payments
+      // Handle wallet operations only for wallet payments
       if (method === 'wallet') {
         console.log('Processing wallet payment - deducting from wallet');
         
-        // Deduct from wallet
+        // Deduct from wallet (always in NGN)
         const { error: walletError } = await supabase
           .from('profiles')
           .update({
-            wallet_balance: (profile.wallet_balance || 0) - total
+            wallet_balance: (profile.wallet_balance || 0) - orderTotal
           })
           .eq('id', user.id);
 
@@ -187,10 +239,11 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           .insert({
             user_id: user.id,
             type: 'debit',
-            amount: total,
+            amount: orderTotal,
             description: `Order payment - ${product.name}`,
             reference: order.id,
-            status: 'completed'
+            status: 'completed',
+            currency: 'NGN' // Wallet transactions are always in NGN
           });
 
         if (transactionError) throw transactionError;
@@ -198,25 +251,25 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
         // Refresh profile to get updated wallet balance
         await refreshProfile();
         
-      } else if (method === 'paystack') {
-        console.log('Processing Paystack payment - NO wallet deduction');
+      } else if (method === 'card') {
+        console.log(`Processing ${isNairaCurrency ? 'Paystack' : 'PayPal'} payment - NO wallet deduction`);
         
-        // For Paystack payment - ONLY create transaction record, DO NOT touch wallet
+        // For card payments - ONLY create transaction record, DO NOT touch wallet
         const { error: transactionError } = await supabase
           .from('transactions')
           .insert({
             user_id: user.id,
             type: 'debit',
-            amount: total,
-            description: `Order payment via Paystack - ${product.name}`,
+            amount: orderTotal,
+            description: `Order payment via ${isNairaCurrency ? 'Paystack' : 'PayPal'} - ${product.name}`,
             reference: reference || order.id,
-            status: 'completed'
+            status: 'completed',
+            currency: userCurrency
           });
 
         if (transactionError) throw transactionError;
         
-        // DO NOT update wallet balance for Paystack payments
-        console.log('Paystack payment processed - wallet balance unchanged');
+        console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment processed - wallet balance unchanged`);
       }
 
       // Update product stock
@@ -261,13 +314,13 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     if (paymentMethod === 'wallet') {
       handleWalletPayment();
     } else {
-      handlePaystackPayment();
+      handleCardPayment();
     }
   };
 
   const isOutOfStock = product.stock === 0;
   const isOrderDisabled = isOutOfStock || processingOrder;
-  const hasInsufficientBalance = paymentMethod === 'wallet' && (profile?.wallet_balance || 0) < total;
+  const hasInsufficientBalance = paymentMethod === 'wallet' && walletBalanceInUserCurrency < total;
 
   const getOrderButtonText = () => {
     if (processingOrder) return 'Processing...';
@@ -276,9 +329,23 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
       if (hasInsufficientBalance) {
         return 'Insufficient Balance';
       }
-      return `Pay ${formatCurrency(total)} from Wallet`;
+      return `Pay ${formatCurrency(total, userCurrency)} from Wallet`;
     }
-    return `Pay ${formatCurrency(total)} with Card`;
+    return `Pay ${formatCurrency(total, userCurrency)} with ${isNairaCurrency ? 'Card' : 'PayPal'}`;
+  };
+
+  const getPaymentMethodTitle = () => {
+    if (isNairaCurrency) {
+      return 'Card/Bank Transfer';
+    }
+    return 'PayPal';
+  };
+
+  const getPaymentMethodSubtitle = () => {
+    if (isNairaCurrency) {
+      return 'Pay securely with Paystack';
+    }
+    return 'Pay securely with PayPal';
   };
 
   return (
@@ -310,7 +377,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
             <View style={styles.productInfo}>
               <View style={styles.productHeader}>
                 <Text style={styles.productName}>{product.name}</Text>
-                <Text style={styles.productPrice}>{formatCurrency(product.price)}</Text>
+                <Text style={styles.productPrice}>{formatCurrency(productPrice, userCurrency)}</Text>
               </View>
 
               <View style={styles.ratingContainer}>
@@ -415,15 +482,19 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
               <View style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Subtotal ({quantity} item{quantity !== 1 ? 's' : ''})</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(subtotal)}</Text>
+                  <Text style={styles.summaryValue}>{formatCurrency(subtotal, userCurrency)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Service Fee (2%)</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(serviceFee)}</Text>
+                  <Text style={styles.summaryValue}>{formatCurrency(serviceFee, userCurrency)}</Text>
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(deliveryFee)}</Text>
+                  <Text style={styles.summaryValue}>{formatCurrency(deliveryFee, userCurrency)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryLabel}>Currency</Text>
+                  <Text style={styles.summaryValue}>{userCurrency}</Text>
                 </View>
                 <View style={styles.summaryRow}>
                   <Text style={styles.summaryLabel}>Delivery to</Text>
@@ -431,7 +502,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                 </View>
                 <View style={[styles.summaryRow, styles.summaryTotal]}>
                   <Text style={styles.summaryTotalLabel}>Total</Text>
-                  <Text style={styles.summaryTotalValue}>{formatCurrency(total)}</Text>
+                  <Text style={styles.summaryTotalValue}>{formatCurrency(total, userCurrency)}</Text>
                 </View>
               </View>
             </View>
@@ -459,7 +530,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                       styles.paymentMethodBalance,
                       hasInsufficientBalance && { color: '#EF4444' }
                     ]}>
-                      Balance: {formatCurrency(profile?.wallet_balance || 0)}
+                      Balance: {formatCurrency(walletBalanceInUserCurrency, userCurrency)}
                       {hasInsufficientBalance && ' (Insufficient)'}
                     </Text>
                   </View>
@@ -479,20 +550,20 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                 <Pressable
                   style={[
                     styles.paymentMethod,
-                    paymentMethod === 'paystack' && styles.paymentMethodActive
+                    paymentMethod === 'card' && styles.paymentMethodActive
                   ]}
-                  onPress={() => setPaymentMethod('paystack')}
+                  onPress={() => setPaymentMethod('card')}
                 >
-                  <CreditCard size={20} color={paymentMethod === 'paystack' ? '#7C3AED' : '#6B7280'} />
+                  <CreditCard size={20} color={paymentMethod === 'card' ? '#7C3AED' : '#6B7280'} />
                   <View style={styles.paymentMethodInfo}>
                     <Text style={[
                       styles.paymentMethodTitle,
-                      paymentMethod === 'paystack' && styles.paymentMethodTitleActive
+                      paymentMethod === 'card' && styles.paymentMethodTitleActive
                     ]}>
-                      Card/Bank Transfer
+                      {getPaymentMethodTitle()}
                     </Text>
                     <Text style={styles.paymentMethodBalance}>
-                      Pay securely with Paystack
+                      {getPaymentMethodSubtitle()}
                     </Text>
                   </View>
                 </Pressable>
@@ -519,33 +590,48 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
         </SafeAreaView>
       </Modal>
 
-      {/* Paystack Payment Modal */}
+      {/* Payment Modal */}
       <Modal
-        visible={showPaystack}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handlePaystackCancel}
-      >
-        <SafeAreaView style={styles.paystackModalContainer}>
-          <View style={styles.paystackModalHeader}>
-            <Text style={styles.paystackModalTitle}>Complete Payment</Text>
-            <Pressable style={styles.closeButton} onPress={handlePaystackCancel}>
-              <X size={24} color="#1F2937" />
-            </Pressable>
-          </View>
-          
-          {showPaystack && user && profile && (
-            <PaystackPayment
-              email={user.email || profile.email}
-              amount={total}
-              publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
-              customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
-              onSuccess={handlePaystackSuccess}
-              onCancel={handlePaystackCancel}
-            />
-          )}
-        </SafeAreaView>
-      </Modal>
+  visible={showPaymentModal}
+  animationType="slide"
+  presentationStyle="pageSheet"
+  onRequestClose={handlePaymentCancel}
+>
+  <SafeAreaView style={styles.paystackModalContainer}>
+    <View style={styles.paystackModalHeader}>
+      <Text style={styles.paystackModalTitle}>
+        Complete Payment - {formatCurrency(total, userCurrency)}
+      </Text>
+      <Pressable style={styles.closeButton} onPress={handlePaymentCancel}>
+        <X size={24} color="#1F2937" />
+      </Pressable>
+    </View>
+
+    {/* ✅ Correctly rendered condition */}
+    {showPaymentModal && user && profile && (
+      <>
+        {isNairaCurrency ? (
+          <PaystackPayment
+            email={user.email || profile.email}
+            amount={total}
+            publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
+            customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
+            onSuccess={handlePaymentSuccess}
+            onCancel={handlePaymentCancel}
+          />
+        ) : (
+          <PayPalPayment
+            email={user.email || profile.email}
+            amount={total}
+            currency={userCurrency}
+            onSuccess={handlePaymentSuccess}
+            onCancel={handlePaymentCancel}
+          />
+        )}
+      </>
+    )}
+  </SafeAreaView>
+</Modal>
     </>
   );
 }

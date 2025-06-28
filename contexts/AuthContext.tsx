@@ -191,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userEmail: user?.email,
         hasProfile: !!profile,
         profileRole: profile?.role,
+        preferredCurrency: profile?.preferred_currency,
         isAdmin,
         loading
       });

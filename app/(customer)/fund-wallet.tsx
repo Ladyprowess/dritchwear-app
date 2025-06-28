@@ -4,10 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Wallet, CreditCard, DollarSign, X } from 'lucide-react-native';
+import { ArrowLeft, Wallet, CreditCard, DollarSign, X, Globe } from 'lucide-react-native';
 import PaystackPayment from '@/components/PaystackPayment';
+import CurrencySelector from '@/components/CurrencySelector';
+import { convertToNGN, formatCurrency, isNairaCurrency } from '@/lib/currency';
+import PayPalPayment from '@/components/PayPalPayment';
+import { convertFromNGN } from '@/lib/currency';
+
 
 const quickAmounts = [1000, 2000, 5000, 10000, 20000, 50000];
+const quickAmountsInternational = [10, 20, 50, 100, 200, 500];
 
 export default function FundWalletScreen() {
   const router = useRouter();
@@ -15,29 +21,27 @@ export default function FundWalletScreen() {
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPaystack, setShowPaystack] = useState(false);
+  const [showPayPal, setShowPayPal] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState(profile?.preferred_currency || 'NGN');
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  const handleCurrencyChange = (currencyCode: string) => {
+    setSelectedCurrency(currencyCode);
+    setAmount(''); // Reset amount when currency changes
   };
 
   const handleQuickAmount = (quickAmount: number) => {
     setAmount(quickAmount.toString());
   };
 
+  const getQuickAmounts = () => {
+    return isNairaCurrency(selectedCurrency) ? quickAmounts : quickAmountsInternational;
+  };
+
   const handleFundWallet = async () => {
     const fundAmount = parseFloat(amount);
     
-    if (!amount || isNaN(fundAmount) || fundAmount < 100) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount (minimum ₦100)');
-      return;
-    }
-
-    if (fundAmount > 1000000) {
-      Alert.alert('Amount Too Large', 'Maximum funding amount is ₦1,000,000');
+    if (!amount || isNaN(fundAmount) || fundAmount <= 0) {
+      Alert.alert('Invalid Amount', `Please enter a valid amount (minimum ${formatCurrency(1, selectedCurrency)})`);
       return;
     }
 
@@ -46,18 +50,34 @@ export default function FundWalletScreen() {
       return;
     }
 
-    // Check if we have Paystack public key
-    if (!process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY) {
-      Alert.alert(
-        'Payment Not Available',
-        'Payment gateway is not configured. Please contact support.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
     setLoading(true);
-    setShowPaystack(true);
+
+    // Choose payment provider based on currency
+    if (isNairaCurrency(selectedCurrency)) {
+      // Check if we have Paystack public key
+      if (!process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY) {
+        Alert.alert(
+          'Payment Not Available',
+          'Payment gateway is not configured. Please contact support.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+      setShowPaystack(true);
+    } else {
+      // Use PayPal for international currencies
+      if (!process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID) {
+        Alert.alert(
+          'Payment Not Available',
+          'PayPal is not configured. Please contact support.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+      setShowPayPal(true);
+    }
   };
 
   const handlePaystackSuccess = async (response: any) => {
@@ -65,6 +85,7 @@ export default function FundWalletScreen() {
 
     try {
       const fundAmount = parseFloat(amount);
+      const ngnAmount = fundAmount; // For Paystack, amount is already in NGN
       
       // Create transaction record
       const { error: transactionError } = await supabase
@@ -72,10 +93,12 @@ export default function FundWalletScreen() {
         .insert({
           user_id: user!.id,
           type: 'credit',
-          amount: fundAmount,
+          amount: ngnAmount,
+          currency: 'NGN',
           description: `Wallet funding via Paystack`,
           reference: response.reference,
-          status: 'completed'
+          status: 'completed',
+          payment_provider: 'paystack'
         });
 
       if (transactionError) throw transactionError;
@@ -84,7 +107,7 @@ export default function FundWalletScreen() {
       const { error: walletError } = await supabase
         .from('profiles')
         .update({
-          wallet_balance: (profile!.wallet_balance || 0) + fundAmount
+          wallet_balance: (profile!.wallet_balance || 0) + ngnAmount
         })
         .eq('id', user!.id);
 
@@ -95,7 +118,7 @@ export default function FundWalletScreen() {
 
       Alert.alert(
         'Payment Successful',
-        `Your wallet has been funded with ${formatCurrency(fundAmount)}`,
+        `Your wallet has been funded with ${formatCurrency(ngnAmount, 'NGN')}`,
         [{ text: 'OK', onPress: () => {
           setAmount('');
           router.back();
@@ -114,6 +137,73 @@ export default function FundWalletScreen() {
     setLoading(false);
     Alert.alert('Payment Cancelled', 'Your payment was cancelled');
   };
+
+  const handlePayPalSuccess = async (response: any) => {
+    setShowPayPal(false);
+
+    try {
+      const fundAmount = parseFloat(amount);
+      
+      // Convert from selected currency to NGN for wallet storage
+      const ngnAmount = convertToNGN(fundAmount, selectedCurrency);
+      
+      // Create transaction record
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: user!.id,
+          type: 'credit',
+          amount: ngnAmount,
+          currency: selectedCurrency,
+          original_amount: fundAmount,
+          exchange_rate: ngnAmount / fundAmount,
+          description: `Wallet funding via PayPal (${selectedCurrency})`,
+          reference: response.reference,
+          status: 'completed',
+          payment_provider: 'paypal'
+        });
+
+      if (transactionError) throw transactionError;
+
+      // Update wallet balance (always in NGN)
+      const { error: walletError } = await supabase
+        .from('profiles')
+        .update({
+          wallet_balance: (profile!.wallet_balance || 0) + ngnAmount
+        })
+        .eq('id', user!.id);
+
+      if (walletError) throw walletError;
+
+      // Refresh profile to get updated balance
+      await refreshProfile();
+
+      Alert.alert(
+        'Payment Successful',
+        `Your wallet has been funded with ${formatCurrency(fundAmount, selectedCurrency)} (${formatCurrency(ngnAmount, 'NGN')})`,
+        [{ text: 'OK', onPress: () => {
+          setAmount('');
+          router.back();
+        }}]
+      );
+    } catch (error) {
+      console.error('Error updating wallet:', error);
+      Alert.alert('Error', 'Payment was successful but failed to update wallet. Please contact support.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePayPalCancel = () => {
+    setShowPayPal(false);
+    setLoading(false);
+    Alert.alert('Payment Cancelled', 'Your payment was cancelled');
+  };
+
+  // Get wallet balance in preferred currency
+  const walletBalanceInPreferredCurrency = profile?.preferred_currency === 'NGN' ? 
+    profile?.wallet_balance : 
+    convertFromNGN(profile?.wallet_balance || 0, profile?.preferred_currency || 'NGN');
 
   return (
     <SafeAreaView style={styles.container}>
@@ -134,7 +224,27 @@ export default function FundWalletScreen() {
             <Text style={styles.balanceLabel}>Current Balance</Text>
           </View>
           <Text style={styles.balanceAmount}>
-            {formatCurrency(profile?.wallet_balance || 0)}
+            {formatCurrency(walletBalanceInPreferredCurrency, profile?.preferred_currency || 'NGN')}
+          </Text>
+          <Text style={styles.balanceNote}>
+            {profile?.preferred_currency !== 'NGN' ? 
+              `Equivalent to ${formatCurrency(profile?.wallet_balance || 0, 'NGN')} in Nigerian Naira` :
+              'Your wallet balance is maintained in Nigerian Naira (NGN)'
+            }
+          </Text>
+        </View>
+
+        {/* Currency Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Select Currency</Text>
+          <CurrencySelector
+            selectedCurrency={selectedCurrency}
+            onCurrencyChange={handleCurrencyChange}
+          />
+          <Text style={styles.currencyNote}>
+            {isNairaCurrency(selectedCurrency) 
+              ? 'Naira payments are processed via Paystack' 
+              : 'International payments are processed via PayPal'}
           </Text>
         </View>
 
@@ -142,7 +252,12 @@ export default function FundWalletScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Enter Amount</Text>
           <View style={styles.amountInputContainer}>
-            <DollarSign size={20} color="#9CA3AF" />
+            <Text style={styles.currencySymbol}>
+              {selectedCurrency === 'NGN' ? '₦' : 
+               selectedCurrency === 'USD' ? '$' :
+               selectedCurrency === 'EUR' ? '€' :
+               selectedCurrency === 'GBP' ? '£' : selectedCurrency}
+            </Text>
             <TextInput
               style={styles.amountInput}
               value={amount}
@@ -151,16 +266,17 @@ export default function FundWalletScreen() {
               placeholderTextColor="#9CA3AF"
               keyboardType="numeric"
             />
-            <Text style={styles.currency}>NGN</Text>
           </View>
-          <Text style={styles.inputHint}>Minimum amount: ₦100</Text>
+          <Text style={styles.inputHint}>
+            Minimum amount: {formatCurrency(1, selectedCurrency)}
+          </Text>
         </View>
 
         {/* Quick Amounts */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quick Amounts</Text>
           <View style={styles.quickAmountsGrid}>
-            {quickAmounts.map((quickAmount) => (
+            {getQuickAmounts().map((quickAmount) => (
               <Pressable
                 key={quickAmount}
                 style={[
@@ -175,7 +291,7 @@ export default function FundWalletScreen() {
                     amount === quickAmount.toString() && styles.quickAmountTextActive
                   ]}
                 >
-                  {formatCurrency(quickAmount)}
+                  {formatCurrency(quickAmount, selectedCurrency)}
                 </Text>
               </Pressable>
             ))}
@@ -186,25 +302,48 @@ export default function FundWalletScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Method</Text>
           <View style={styles.paymentMethodCard}>
-            <CreditCard size={24} color="#7C3AED" />
-            <View style={styles.paymentMethodInfo}>
-              <Text style={styles.paymentMethodTitle}>Paystack</Text>
-              <Text style={styles.paymentMethodSubtitle}>
-                Pay securely with card, bank transfer, or USSD
-              </Text>
-            </View>
+            {isNairaCurrency(selectedCurrency) ? (
+              <>
+                <CreditCard size={24} color="#7C3AED" />
+                <View style={styles.paymentMethodInfo}>
+                  <Text style={styles.paymentMethodTitle}>Paystack</Text>
+                  <Text style={styles.paymentMethodSubtitle}>
+                    Pay securely with card, bank transfer, or USSD
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Globe size={24} color="#0070BA" />
+                <View style={styles.paymentMethodInfo}>
+                  <Text style={[styles.paymentMethodTitle, { color: '#0070BA' }]}>PayPal</Text>
+                  <Text style={styles.paymentMethodSubtitle}>
+                    Pay securely with PayPal or credit card
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
+          {!isNairaCurrency(selectedCurrency) && process.env.EXPO_PUBLIC_PAYPAL_SANDBOX === 'true' && (
+            <Text style={styles.sandboxNote}>
+              🔧 PayPal Sandbox Mode - No real payment will be processed
+            </Text>
+          )}
         </View>
 
         {/* Fund Button */}
         <View style={styles.fundContainer}>
           <Pressable
-            style={[styles.fundButton, (!amount || loading) && styles.fundButtonDisabled]}
+            style={[
+              styles.fundButton, 
+              (!amount || loading) && styles.fundButtonDisabled,
+              !isNairaCurrency(selectedCurrency) && styles.paypalButton
+            ]}
             onPress={handleFundWallet}
             disabled={!amount || loading}
           >
             <Text style={styles.fundButtonText}>
-              {loading ? 'Processing...' : `Fund Wallet ${amount ? formatCurrency(parseFloat(amount)) : ''}`}
+              {loading ? 'Processing...' : `Fund Wallet ${amount ? formatCurrency(parseFloat(amount), selectedCurrency) : ''}`}
             </Text>
           </Pressable>
           
@@ -237,6 +376,35 @@ export default function FundWalletScreen() {
               customerName={profile.full_name || 'Customer'}
               onSuccess={handlePaystackSuccess}
               onCancel={handlePaystackCancel}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* PayPal Payment Modal */}
+      <Modal
+        visible={showPayPal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handlePayPalCancel}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Complete Payment</Text>
+            <Pressable style={styles.closeButton} onPress={handlePayPalCancel}>
+              <X size={24} color="#1F2937" />
+            </Pressable>
+          </View>
+          
+          {showPayPal && amount && profile && (
+            <PayPalPayment
+              email={profile.email}
+              amount={parseFloat(amount)}
+              currency={selectedCurrency}
+              customerName={profile.full_name || 'Customer'}
+              description={`Wallet funding - ${formatCurrency(parseFloat(amount), selectedCurrency)}`}
+              onSuccess={handlePayPalSuccess}
+              onCancel={handlePayPalCancel}
             />
           )}
         </SafeAreaView>
@@ -305,6 +473,12 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
+    marginBottom: 8,
+  },
+  balanceNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
   },
   section: {
     paddingHorizontal: 20,
@@ -316,6 +490,19 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 12,
   },
+  currencyNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginTop: 8,
+  },
+  sandboxNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#F59E0B',
+    marginTop: 8,
+    textAlign: 'center',
+  },
   amountInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -325,18 +512,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
+  currencySymbol: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: '#6B7280',
+    marginRight: 8,
+  },
   amountInput: {
     flex: 1,
     height: 56,
     fontSize: 24,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    marginLeft: 8,
-  },
-  currency: {
-    fontSize: 16,
-    fontFamily: 'Inter-Medium',
-    color: '#6B7280',
   },
   inputHint: {
     fontSize: 12,
@@ -386,7 +573,7 @@ const styles = StyleSheet.create({
   paymentMethodTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
+    color: '#7C3AED',
     marginBottom: 2,
   },
   paymentMethodSubtitle: {
@@ -404,6 +591,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     alignItems: 'center',
     marginBottom: 12,
+  },
+  paypalButton: {
+    backgroundColor: '#0070BA',
   },
   fundButtonDisabled: {
     opacity: 0.6,

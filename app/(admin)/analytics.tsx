@@ -12,9 +12,11 @@ import {
   Calendar,
   Package,
   CreditCard,
-  Star
+  Star,
+  Globe
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { formatCurrency } from '@/lib/currency';
 
 interface AnalyticsData {
   totalRevenue: number;
@@ -33,12 +35,18 @@ interface AnalyticsData {
     type: string;
     description: string;
     amount?: number;
+    currency?: string;
     timestamp: string;
     customerName?: string;
     orderNumber?: string;
   }>;
   monthlyRevenue: Array<{
     month: string;
+    revenue: number;
+    orders: number;
+  }>;
+  currencyBreakdown: Array<{
+    currency: string;
     revenue: number;
     orders: number;
   }>;
@@ -57,9 +65,11 @@ export default function AnalyticsScreen() {
     topProducts: [],
     recentActivity: [],
     monthlyRevenue: [],
+    currencyBreakdown: [],
   });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState('NGN');
 
   const generateOrderNumber = (id: string, isCustom: boolean = false) => {
     const prefix = isCustom ? 'CO' : 'OR';
@@ -75,7 +85,10 @@ export default function AnalyticsScreen() {
         .select(`
           id,
           total,
+          currency,
+          original_amount,
           payment_status,
+          payment_method,
           created_at,
           items,
           profiles!inner(full_name, email)
@@ -84,7 +97,7 @@ export default function AnalyticsScreen() {
       // Fetch customers data
       const { data: customers } = await supabase
         .from('profiles')
-        .select('created_at, full_name, email')
+        .select('created_at, full_name, email, preferred_currency')
         .eq('role', 'customer');
 
       // Fetch custom requests data with customer info
@@ -93,9 +106,10 @@ export default function AnalyticsScreen() {
         .select(`
           id,
           title,
+          currency,
           created_at,
           profiles!inner(full_name, email),
-          invoices(amount, status)
+          invoices(amount, status, currency, original_amount)
         `);
 
       if (orders && customers) {
@@ -169,6 +183,7 @@ export default function AnalyticsScreen() {
           type: 'order',
           description: `New order from ${order.profiles.full_name || order.profiles.email}`,
           amount: order.total,
+          currency: order.currency || 'NGN',
           timestamp: order.created_at,
           customerName: order.profiles.full_name || order.profiles.email,
           orderNumber: generateOrderNumber(order.id, false),
@@ -224,6 +239,43 @@ export default function AnalyticsScreen() {
           });
         }
 
+        // Generate currency breakdown
+        const currencyBreakdown: Record<string, { revenue: number, orders: number }> = {};
+        
+        // Add regular orders
+        paidOrders.forEach(order => {
+          const currency = order.currency || 'NGN';
+          if (!currencyBreakdown[currency]) {
+            currencyBreakdown[currency] = { revenue: 0, orders: 0 };
+          }
+          currencyBreakdown[currency].revenue += order.total;
+          currencyBreakdown[currency].orders += 1;
+        });
+        
+        // Add custom orders with paid invoices
+        if (customRequests) {
+          customRequests.forEach(request => {
+            if (request.invoices) {
+              request.invoices.forEach((invoice: any) => {
+                if (invoice.status === 'paid') {
+                  const currency = invoice.currency || 'NGN';
+                  if (!currencyBreakdown[currency]) {
+                    currencyBreakdown[currency] = { revenue: 0, orders: 0 };
+                  }
+                  currencyBreakdown[currency].revenue += invoice.amount;
+                  currencyBreakdown[currency].orders += 1;
+                }
+              });
+            }
+          });
+        }
+        
+        const currencyBreakdownArray = Object.entries(currencyBreakdown).map(([currency, data]) => ({
+          currency,
+          revenue: data.revenue,
+          orders: data.orders
+        }));
+
         setAnalytics({
           totalRevenue: totalRevenue + customRevenue,
           totalOrders: totalOrdersCount,
@@ -235,6 +287,7 @@ export default function AnalyticsScreen() {
           topProducts,
           recentActivity: allActivities,
           monthlyRevenue,
+          currencyBreakdown: currencyBreakdownArray,
         });
       }
     } catch (error) {
@@ -253,14 +306,6 @@ export default function AnalyticsScreen() {
   useEffect(() => {
     fetchAnalytics();
   }, []);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
 
   const formatGrowth = (growth: number) => {
     const sign = growth >= 0 ? '+' : '';
@@ -309,7 +354,7 @@ export default function AnalyticsScreen() {
   const statCards = [
     {
       title: 'Total Revenue',
-      value: formatCurrency(analytics.totalRevenue),
+      value: formatCurrency(analytics.totalRevenue, selectedCurrency),
       growth: analytics.revenueGrowth,
       icon: DollarSign,
       gradient: ['#10B981', '#047857'],
@@ -330,7 +375,7 @@ export default function AnalyticsScreen() {
     },
     {
       title: 'Avg Order Value',
-      value: formatCurrency(analytics.averageOrderValue),
+      value: formatCurrency(analytics.averageOrderValue, selectedCurrency),
       growth: 0,
       icon: TrendingUp,
       gradient: ['#F59E0B', '#D97706'],
@@ -355,6 +400,32 @@ export default function AnalyticsScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* Currency Selector */}
+        <View style={styles.currencySelector}>
+          <Text style={styles.currencySelectorLabel}>View Analytics in:</Text>
+          <View style={styles.currencyOptions}>
+            {['NGN', 'USD', 'EUR', 'GBP'].map((currency) => (
+              <Pressable
+                key={currency}
+                style={[
+                  styles.currencyOption,
+                  selectedCurrency === currency && styles.currencyOptionActive
+                ]}
+                onPress={() => setSelectedCurrency(currency)}
+              >
+                <Text
+                  style={[
+                    styles.currencyOptionText,
+                    selectedCurrency === currency && styles.currencyOptionTextActive
+                  ]}
+                >
+                  {currency}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statsGrid}>
@@ -378,6 +449,38 @@ export default function AnalyticsScreen() {
                 </View>
               </LinearGradient>
             ))}
+          </View>
+        </View>
+
+        {/* Currency Breakdown */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Revenue by Currency</Text>
+          <View style={styles.currencyBreakdownCard}>
+            {analytics.currencyBreakdown.length > 0 ? (
+              analytics.currencyBreakdown.map((item, index) => (
+                <View key={index} style={styles.currencyBreakdownItem}>
+                  <View style={styles.currencyBreakdownHeader}>
+                    <View style={styles.currencyFlag}>
+                      <Globe size={16} color="#7C3AED" />
+                      <Text style={styles.currencyCode}>{item.currency}</Text>
+                    </View>
+                    <Text style={styles.currencyRevenue}>
+                      {formatCurrency(item.revenue, item.currency)}
+                    </Text>
+                  </View>
+                  <View style={styles.currencyBreakdownDetails}>
+                    <Text style={styles.currencyOrderCount}>
+                      {item.orders} {item.orders === 1 ? 'order' : 'orders'}
+                    </Text>
+                    <Text style={styles.currencyAverage}>
+                      Avg: {formatCurrency(item.revenue / item.orders, item.currency)}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.emptyText}>No currency data available</Text>
+            )}
           </View>
         </View>
 
@@ -405,7 +508,7 @@ export default function AnalyticsScreen() {
                       />
                     </View>
                     <Text style={styles.barLabel}>{month.month}</Text>
-                    <Text style={styles.barValue}>{formatCurrency(month.revenue)}</Text>
+                    <Text style={styles.barValue}>{formatCurrency(month.revenue, selectedCurrency)}</Text>
                   </View>
                 );
               })}
@@ -428,7 +531,7 @@ export default function AnalyticsScreen() {
                     <Text style={styles.productSales}>{product.sales} sold</Text>
                   </View>
                   <Text style={styles.productRevenue}>
-                    {formatCurrency(product.revenue)}
+                    {formatCurrency(product.revenue, selectedCurrency)}
                   </Text>
                 </View>
               ))
@@ -467,7 +570,7 @@ export default function AnalyticsScreen() {
                     </View>
                     {activity.amount && (
                       <Text style={styles.activityAmount}>
-                        {formatCurrency(activity.amount)}
+                        {formatCurrency(activity.amount, activity.currency || 'NGN')}
                       </Text>
                     )}
                   </View>
@@ -516,6 +619,43 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  currencySelector: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  currencySelectorLabel: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  currencyOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  currencyOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  currencyOptionActive: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
+  },
+  currencyOptionText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#6B7280',
+  },
+  currencyOptionTextActive: {
+    color: '#FFFFFF',
   },
   statsContainer: {
     paddingHorizontal: 20,
@@ -572,6 +712,56 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
     marginBottom: 16,
+  },
+  currencyBreakdownCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  currencyBreakdownItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  currencyBreakdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  currencyFlag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currencyCode: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+  },
+  currencyRevenue: {
+    fontSize: 16,
+    fontFamily: 'Inter-Bold',
+    color: '#7C3AED',
+  },
+  currencyBreakdownDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  currencyOrderCount: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+  },
+  currencyAverage: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
   },
   chartCard: {
     backgroundColor: '#FFFFFF',

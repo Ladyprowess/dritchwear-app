@@ -16,11 +16,14 @@ export interface Profile {
   location: string | null;
   wallet_balance: number;
   role: 'customer' | 'admin';
+  preferred_currency: string;
 }
 
 export async function signUp({ email, password, fullName, phone }: AuthCredentials) {
   try {
     console.log('📝 Signing up user:', email);
+    
+    // Use signUp but don't automatically sign in
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -29,6 +32,8 @@ export async function signUp({ email, password, fullName, phone }: AuthCredentia
           full_name: fullName,
           phone: phone,
         },
+        // This is the key change - don't automatically sign in after registration
+        emailRedirectTo: `${window.location.origin}/login`,
       },
     });
 
@@ -38,6 +43,10 @@ export async function signUp({ email, password, fullName, phone }: AuthCredentia
     }
     
     console.log('✅ Sign up successful:', data.user?.email);
+    
+    // Sign out immediately to ensure the user is redirected to login
+    await supabase.auth.signOut();
+    
     return { data, error: null };
   } catch (error) {
     console.error('💥 Sign up catch error:', error);

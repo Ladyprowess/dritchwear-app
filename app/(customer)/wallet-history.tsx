@@ -4,15 +4,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Calendar } from 'lucide-react-native';
+import { ArrowLeft, Wallet, TrendingUp, TrendingDown, Calendar, Globe } from 'lucide-react-native';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Transaction {
   id: string;
   type: 'credit' | 'debit';
   amount: number;
+  currency: string;
+  original_amount: number | null;
   description: string;
   status: string;
   created_at: string;
+  payment_provider: string;
 }
 
 export default function WalletHistoryScreen() {
@@ -21,6 +25,7 @@ export default function WalletHistoryScreen() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [displayCurrency, setDisplayCurrency] = useState(profile?.preferred_currency || 'NGN');
 
   const fetchTransactions = async () => {
     if (!user) return;
@@ -49,15 +54,10 @@ export default function WalletHistoryScreen() {
 
   useEffect(() => {
     fetchTransactions();
-  }, [user]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
+    if (profile) {
+      setDisplayCurrency(profile.preferred_currency || 'NGN');
+    }
+  }, [user, profile]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -92,9 +92,40 @@ export default function WalletHistoryScreen() {
     return type === 'credit' ? '#10B981' : '#EF4444';
   };
 
+  const getPaymentProviderIcon = (provider: string) => {
+    switch (provider) {
+      case 'paystack':
+        return '🇳🇬';
+      case 'paypal':
+        return '🌍';
+      case 'wallet':
+        return '👛';
+      default:
+        return '💳';
+    }
+  };
+
+  // Convert transaction amount to display currency
+  const getDisplayAmount = (transaction: Transaction) => {
+    // If transaction is already in the display currency, use it directly
+    if (transaction.currency === displayCurrency) {
+      return transaction.original_amount || transaction.amount;
+    }
+    
+    // If transaction has original amount in a non-NGN currency
+    if (transaction.original_amount && transaction.currency !== 'NGN' && transaction.currency === displayCurrency) {
+      return transaction.original_amount;
+    }
+    
+    // Otherwise convert from NGN to display currency
+    return convertFromNGN(transaction.amount, displayCurrency);
+  };
+
   const renderTransaction = (transaction: Transaction) => {
     const IconComponent = getTransactionIcon(transaction.type);
     const color = getTransactionColor(transaction.type);
+    const providerIcon = getPaymentProviderIcon(transaction.payment_provider || 'wallet');
+    const displayAmount = getDisplayAmount(transaction);
 
     return (
       <View key={transaction.id} style={styles.transactionCard}>
@@ -106,14 +137,29 @@ export default function WalletHistoryScreen() {
             <Text style={styles.transactionDescription}>
               {transaction.description}
             </Text>
-            <Text style={styles.transactionDate}>
-              {formatDate(transaction.created_at)}
-            </Text>
+            <View style={styles.transactionMeta}>
+              <Text style={styles.transactionDate}>
+                {formatDate(transaction.created_at)}
+              </Text>
+              {transaction.payment_provider && (
+                <View style={styles.paymentProvider}>
+                  <Text style={styles.providerIcon}>{providerIcon}</Text>
+                  <Text style={styles.providerText}>
+                    {transaction.payment_provider.charAt(0).toUpperCase() + transaction.payment_provider.slice(1)}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
           <View style={styles.transactionAmount}>
             <Text style={[styles.amountText, { color }]}>
-              {transaction.type === 'credit' ? '+' : '-'}{formatCurrency(transaction.amount)}
+              {transaction.type === 'credit' ? '+' : '-'}{formatCurrency(displayAmount, displayCurrency)}
             </Text>
+            {transaction.currency !== displayCurrency && (
+              <Text style={styles.originalAmount}>
+                {formatCurrency(transaction.amount, transaction.currency || 'NGN')}
+              </Text>
+            )}
             <Text style={styles.statusText}>
               {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
             </Text>
@@ -123,13 +169,21 @@ export default function WalletHistoryScreen() {
     );
   };
 
+  // Calculate totals in display currency
   const totalCredits = transactions
     .filter(t => t.type === 'credit' && t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getDisplayAmount(t), 0);
 
   const totalDebits = transactions
     .filter(t => t.type === 'debit' && t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + getDisplayAmount(t), 0);
+
+  // Get wallet balance in display currency
+  const walletBalanceInDisplayCurrency = profile ? 
+    (displayCurrency === 'NGN' ? 
+      profile.wallet_balance : 
+      convertFromNGN(profile.wallet_balance, displayCurrency)
+    ) : 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -149,14 +203,20 @@ export default function WalletHistoryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Balance Card */}
+        {/* Current Balance */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
             <Wallet size={24} color="#7C3AED" />
             <Text style={styles.balanceLabel}>Current Balance</Text>
           </View>
           <Text style={styles.balanceAmount}>
-            {formatCurrency(profile?.wallet_balance || 0)}
+            {formatCurrency(walletBalanceInDisplayCurrency, displayCurrency)}
+          </Text>
+          <Text style={styles.balanceNote}>
+            {displayCurrency !== 'NGN' ? 
+              `Equivalent to ${formatCurrency(profile?.wallet_balance || 0, 'NGN')} in Nigerian Naira` :
+              'Your wallet balance is maintained in Nigerian Naira (NGN)'
+            }
           </Text>
         </View>
 
@@ -166,14 +226,14 @@ export default function WalletHistoryScreen() {
             <TrendingUp size={20} color="#10B981" />
             <Text style={styles.summaryLabel}>Total Credits</Text>
             <Text style={[styles.summaryAmount, { color: '#10B981' }]}>
-              {formatCurrency(totalCredits)}
+              {formatCurrency(totalCredits, displayCurrency)}
             </Text>
           </View>
           <View style={styles.summaryCard}>
             <TrendingDown size={20} color="#EF4444" />
             <Text style={styles.summaryLabel}>Total Debits</Text>
             <Text style={[styles.summaryAmount, { color: '#EF4444' }]}>
-              {formatCurrency(totalDebits)}
+              {formatCurrency(totalDebits, displayCurrency)}
             </Text>
           </View>
         </View>
@@ -268,6 +328,12 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
+    marginBottom: 8,
+  },
+  balanceNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
   },
   summaryContainer: {
     flexDirection: 'row',
@@ -356,9 +422,31 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 2,
   },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   transactionDate: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+  },
+  paymentProvider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+  },
+  providerIcon: {
+    fontSize: 12,
+  },
+  providerText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
     color: '#6B7280',
   },
   transactionAmount: {
@@ -367,6 +455,12 @@ const styles = StyleSheet.create({
   amountText: {
     fontSize: 16,
     fontFamily: 'Inter-Bold',
+    marginBottom: 2,
+  },
+  originalAmount: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
     marginBottom: 2,
   },
   statusText: {
