@@ -53,7 +53,8 @@ export function getDefaultCurrency(): Currency {
 export function convertFromNGN(amountInNGN: number, targetCurrency: string): number {
   const rate = EXCHANGE_RATES[targetCurrency];
   if (!rate) {
-    throw new Error(`Exchange rate not found for currency: ${targetCurrency}`);
+    console.warn(`Exchange rate not found for currency: ${targetCurrency}, using NGN rate`);
+    return amountInNGN;
   }
   return Math.round((amountInNGN * rate) * 100) / 100; // Round to 2 decimal places
 }
@@ -61,15 +62,22 @@ export function convertFromNGN(amountInNGN: number, targetCurrency: string): num
 export function convertToNGN(amount: number, fromCurrency: string): number {
   const rate = EXCHANGE_RATES[fromCurrency];
   if (!rate) {
-    throw new Error(`Exchange rate not found for currency: ${fromCurrency}`);
+    console.warn(`Exchange rate not found for currency: ${fromCurrency}, using direct amount`);
+    return amount;
   }
   return Math.round((amount / rate) * 100) / 100; // Round to 2 decimal places
 }
 
 export function formatCurrency(amount: number, currencyCode: string): string {
+  if (isNaN(amount)) {
+    console.warn(`Invalid amount for formatting: ${amount}`);
+    amount = 0;
+  }
+  
   const currency = getCurrencyByCode(currencyCode);
   if (!currency) {
-    return `${amount}`;
+    console.warn(`Unknown currency code: ${currencyCode}, using plain number`);
+    return `${amount.toFixed(2)}`;
   }
 
   // Special formatting for different currencies
@@ -79,17 +87,23 @@ export function formatCurrency(amount: number, currencyCode: string): string {
       // No decimal places for these currencies
       return `${currency.symbol}${Math.round(amount).toLocaleString()}`;
     case 'NGN':
-      return new Intl.NumberFormat('en-NG', {
-        style: 'currency',
-        currency: currencyCode,
-        minimumFractionDigits: 0,
-      }).format(amount);
+      return `₦${amount.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+    case 'KES':
+      return `KES ${amount.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 2})}`;
     default:
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: currencyCode,
-        minimumFractionDigits: 2,
-      }).format(amount);
+      // Use Intl.NumberFormat for consistent formatting
+      try {
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: currencyCode,
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }).format(amount);
+      } catch (error) {
+        // Fallback if Intl.NumberFormat fails
+        console.warn(`Error formatting currency ${currencyCode}:`, error);
+        return `${currency.symbol}${amount.toFixed(2)}`;
+      }
   }
 }
 
@@ -203,6 +217,42 @@ export function parseBudgetRangeToNGN(budgetRange: string, fromCurrency: string)
   
   // Format as NGN budget range
   return `₦${Math.round(minNGN).toLocaleString()} - ₦${Math.round(maxNGN).toLocaleString()}`;
+}
+
+// Parse KES budget range to customer's preferred currency
+export function parseKESBudgetRange(budgetRange: string, targetCurrency: string): string {
+  // Check if the budget range is in KES format (e.g., "KES 860.00 - KES 2,150.00")
+  const kesRegex = /KES\s+([\d,.]+)\s*-\s*KES\s+([\d,.]+)/;
+  const matches = budgetRange.match(kesRegex);
+  
+  if (!matches || matches.length < 3) {
+    // If not in expected format, return as is
+    return budgetRange;
+  }
+  
+  // Parse the min and max values, removing commas
+  const minKES = parseFloat(matches[1].replace(/,/g, ''));
+  const maxKES = parseFloat(matches[2].replace(/,/g, ''));
+  
+  if (isNaN(minKES) || isNaN(maxKES)) {
+    return budgetRange;
+  }
+  
+  // If target currency is already KES, return formatted
+  if (targetCurrency === 'KES') {
+    return `KES ${minKES.toLocaleString()} - KES ${maxKES.toLocaleString()}`;
+  }
+  
+  // Convert KES to NGN first (intermediate step)
+  const minNGN = convertToNGN(minKES, 'KES');
+  const maxNGN = convertToNGN(maxKES, 'KES');
+  
+  // Then convert NGN to target currency
+  const minTarget = convertFromNGN(minNGN, targetCurrency);
+  const maxTarget = convertFromNGN(maxNGN, targetCurrency);
+  
+  // Format in target currency
+  return `${formatCurrency(minTarget, targetCurrency)} - ${formatCurrency(maxTarget, targetCurrency)}`;
 }
 
 // Generate a budget range in the user's preferred currency

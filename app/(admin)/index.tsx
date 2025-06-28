@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Users, Package, DollarSign, TrendingUp, Eye, MoreHorizontal } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import { formatCurrency } from '@/lib/currency';
 
 interface DashboardStats {
   totalUsers: number;
@@ -21,9 +22,11 @@ interface RecentOrder {
   total: number;
   order_status: string;
   created_at: string;
+  currency?: string;
   profiles: {
     full_name: string;
     email: string;
+    preferred_currency?: string;
   };
   // Custom order fields
   title?: string;
@@ -59,7 +62,7 @@ export default function AdminDashboardScreen() {
       // Fetch order stats
       const { data: orders } = await supabase
         .from('orders')
-        .select('total, order_status, payment_status');
+        .select('total, order_status, payment_status, currency');
 
       // Fetch custom requests stats
       const { data: customRequests } = await supabase
@@ -82,7 +85,8 @@ export default function AdminDashboardScreen() {
           order_status,
           delivery_address,
           created_at,
-          profiles!inner(full_name, email, wallet_balance)
+          currency,
+          profiles!inner(full_name, email, wallet_balance, preferred_currency)
         `)
         .order('created_at', { ascending: false })
         .limit(2);
@@ -99,7 +103,8 @@ export default function AdminDashboardScreen() {
           budget_range,
           status,
           created_at,
-          profiles!inner(full_name, email, wallet_balance)
+          currency,
+          profiles!inner(full_name, email, wallet_balance, preferred_currency)
         `)
         .order('created_at', { ascending: false })
         .limit(1);
@@ -148,14 +153,6 @@ export default function AdminDashboardScreen() {
     fetchDashboardData();
   }, []);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       month: 'short',
@@ -191,6 +188,17 @@ export default function AdminDashboardScreen() {
     return !!order.title; // Custom orders have title field
   };
 
+  const formatOrderAmount = (order: RecentOrder) => {
+    // Use the order's currency if available, otherwise use NGN
+    const currency = order.currency || 'NGN';
+    
+    if (isCustomOrder(order)) {
+      return order.budget_range || '';
+    } else {
+      return formatCurrency(order.total, currency);
+    }
+  };
+
   const statCards = [
     {
       title: 'Total Users',
@@ -208,7 +216,7 @@ export default function AdminDashboardScreen() {
     },
     {
       title: 'Revenue',
-      value: formatCurrency(stats.totalRevenue),
+      value: formatCurrency(stats.totalRevenue, 'NGN'),
       icon: DollarSign,
       color: '#F59E0B',
       gradient: ['#F59E0B', '#D97706'],
@@ -302,7 +310,7 @@ export default function AdminDashboardScreen() {
                   </View>
                   <View style={styles.orderRight}>
                     <Text style={styles.orderAmount}>
-                      {isCustomOrder(order) ? order.budget_range : formatCurrency(order.total)}
+                      {formatOrderAmount(order)}
                     </Text>
                     <View
                       style={[

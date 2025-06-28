@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle } from 'lucide-react-native';
+import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
@@ -304,15 +304,13 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </View>
                 )}
 
-                {isCustomOrder && (
-                  <View style={styles.infoRow}>
-                    <DollarSign size={20} color="#6B7280" />
-                    <View style={styles.infoContent}>
-                      <Text style={styles.infoLabel}>Customer Currency</Text>
-                      <Text style={styles.infoValue}>{customerCurrency}</Text>
-                    </View>
+                <View style={styles.infoRow}>
+                  <Globe size={20} color="#6B7280" />
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Currency</Text>
+                    <Text style={styles.infoValue}>{customerCurrency}</Text>
                   </View>
-                )}
+                </View>
 
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
@@ -379,7 +377,19 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   <Text style={styles.customOrderDescription}>{order.description}</Text>
                   <View style={styles.customOrderMeta}>
                     <Text style={styles.customOrderMetaItem}>Quantity: {order.quantity}</Text>
-                    <Text style={styles.customOrderMetaItem}>Budget: {order.budget_range}</Text>
+                    <Text style={styles.customOrderMetaItem}>
+                      Budget: {order.budget_range && order.budget_range.includes('KES') ? 
+                        formatCurrencyInCustomerPreference(
+                          parseFloat(order.budget_range.replace(/KES\s+([0-9,.]+).*/, '$1').replace(/,/g, '')),
+                          'KES'
+                        ) + ' - ' + 
+                        formatCurrencyInCustomerPreference(
+                          parseFloat(order.budget_range.replace(/.*KES\s+([0-9,.]+)/, '$1').replace(/,/g, '')),
+                          'KES'
+                        ) :
+                        order.budget_range
+                      }
+                    </Text>
                   </View>
                 </View>
 
@@ -454,6 +464,14 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Delivery Fee</Text>
                       <Text style={styles.summaryValue}>{formatCurrencyInCustomerPreference(order.delivery_fee || 0)}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Currency</Text>
+                      <Text style={styles.summaryValue}>{customerCurrency}</Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Delivery to</Text>
+                      <Text style={styles.summaryValue}>{profile?.location || 'Lagos, Nigeria'}</Text>
                     </View>
                     <View style={[styles.summaryRow, styles.summaryTotal]}>
                       <Text style={styles.summaryTotalLabel}>Total</Text>
