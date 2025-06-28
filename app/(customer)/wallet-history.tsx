@@ -105,6 +105,19 @@ export default function WalletHistoryScreen() {
     }
   };
 
+  const getPaymentProviderName = (provider: string) => {
+    switch (provider) {
+      case 'paystack':
+        return 'Paystack';
+      case 'paypal':
+        return 'PayPal';
+      case 'wallet':
+        return 'Wallet';
+      default:
+        return provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'Unknown';
+    }
+  };
+
   // Convert transaction amount to display currency
   const getDisplayAmount = (transaction: Transaction) => {
     // If transaction is already in the display currency, use it directly
@@ -126,6 +139,7 @@ export default function WalletHistoryScreen() {
     const color = getTransactionColor(transaction.type);
     const providerIcon = getPaymentProviderIcon(transaction.payment_provider || 'wallet');
     const displayAmount = getDisplayAmount(transaction);
+    const providerName = getPaymentProviderName(transaction.payment_provider || 'wallet');
 
     return (
       <View key={transaction.id} style={styles.transactionCard}>
@@ -145,7 +159,7 @@ export default function WalletHistoryScreen() {
                 <View style={styles.paymentProvider}>
                   <Text style={styles.providerIcon}>{providerIcon}</Text>
                   <Text style={styles.providerText}>
-                    {transaction.payment_provider.charAt(0).toUpperCase() + transaction.payment_provider.slice(1)}
+                    {providerName}
                   </Text>
                 </View>
               )}
