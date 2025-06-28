@@ -6,11 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal } from '@/lib/fees';
-import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
 import PaystackPayment from '@/components/PaystackPayment';
 import PayPalPayment from '@/components/PayPalPayment';
-
-// import PayPalPayment from '@/components/PayPalPayment'; // You'll need to create this component
 
 interface Product {
   id: string;
@@ -110,7 +108,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     }
 
     // For wallet payments, always convert to NGN since wallet balance is stored in NGN
-    const totalInNGN = userCurrency === 'NGN' ? total : (product.price * quantity + calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').serviceFee + calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').deliveryFee);
+    const totalInNGN = userCurrency === 'NGN' ? total : convertToNGN(total, userCurrency);
 
     // Check wallet balance (always in NGN)
     if ((profile.wallet_balance || 0) < totalInNGN) {
@@ -169,10 +167,13 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     setShowPaymentModal(false);
     setProcessingOrder(true);
     
-    // For card payments, always use the amount in the original currency
-    const totalForOrder = userCurrency === 'NGN' ? total : (product.price * quantity + calculateOrderTotal(product.price * quantity, profile?.location || 'Lagos, Nigeria').serviceFee + calculateOrderTotal(product.price * quantity, profile?.location || 'Lagos, Nigeria').deliveryFee);
+    // For card payments, use the amount in the user's currency
+    const totalInUserCurrency = total;
     
-    await processOrder('card', totalForOrder, response.reference || response.id);
+    // But we need to convert to NGN for storage in the database
+    const totalInNGN = userCurrency === 'NGN' ? total : convertToNGN(total, userCurrency);
+    
+    await processOrder('card', totalInNGN, response.reference || response.id, totalInUserCurrency);
   };
 
   const handlePaymentCancel = () => {
@@ -181,7 +182,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     Alert.alert('Payment Cancelled', 'Your payment was cancelled');
   };
 
-  const processOrder = async (method: 'wallet' | 'card', orderTotal: number, reference?: string) => {
+  const processOrder = async (method: 'wallet' | 'card', orderTotalNGN: number, reference?: string, orderTotalUserCurrency?: number) => {
     try {
       if (!user || !profile) {
         throw new Error('User not authenticated');
@@ -189,7 +190,12 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
       console.log('Processing order with method:', method);
 
-      // Create order - store amounts in the original currency but convert to NGN for backend
+      // Calculate values in NGN for database storage
+      const subtotalNGN = userCurrency === 'NGN' ? subtotal : convertToNGN(subtotal, userCurrency);
+      const serviceFeeNGN = userCurrency === 'NGN' ? serviceFee : convertToNGN(serviceFee, userCurrency);
+      const deliveryFeeNGN = userCurrency === 'NGN' ? deliveryFee : convertToNGN(deliveryFee, userCurrency);
+
+      // Create order - store amounts in NGN for backend, but keep track of original currency
       const orderData = {
         user_id: user.id,
         items: [{
@@ -200,15 +206,17 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           size: selectedSize,
           color: selectedColor,
         }],
-        subtotal: userCurrency === 'NGN' ? subtotal : product.price * quantity,
-        service_fee: userCurrency === 'NGN' ? serviceFee : calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').serviceFee,
-        delivery_fee: userCurrency === 'NGN' ? deliveryFee : calculateOrderTotal(product.price * quantity, profile.location || 'Lagos, Nigeria').deliveryFee,
-        total: userCurrency === 'NGN' ? total : orderTotal,
+        subtotal: subtotalNGN,
+        service_fee: serviceFeeNGN,
+        delivery_fee: deliveryFeeNGN,
+        total: orderTotalNGN,
         payment_method: method === 'wallet' ? 'wallet' : (isNairaCurrency ? 'paystack' : 'paypal'),
         payment_status: 'paid',
         order_status: 'pending',
         delivery_address: profile.location || 'Lagos, Nigeria',
         currency: userCurrency, // Store the currency used for the order
+        original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null, // Store original amount if not NGN
+        exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null // Store exchange rate if not NGN
       };
 
       const { data: order, error: orderError } = await supabase
@@ -227,7 +235,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
         const { error: walletError } = await supabase
           .from('profiles')
           .update({
-            wallet_balance: (profile.wallet_balance || 0) - orderTotal
+            wallet_balance: (profile.wallet_balance || 0) - orderTotalNGN
           })
           .eq('id', user.id);
 
@@ -239,11 +247,13 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           .insert({
             user_id: user.id,
             type: 'debit',
-            amount: orderTotal,
+            amount: orderTotalNGN,
             description: `Order payment - ${product.name}`,
             reference: order.id,
             status: 'completed',
-            currency: 'NGN' // Wallet transactions are always in NGN
+            currency: 'NGN', // Wallet transactions are always in NGN
+            original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null,
+            exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null
           });
 
         if (transactionError) throw transactionError;
@@ -260,11 +270,14 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           .insert({
             user_id: user.id,
             type: 'debit',
-            amount: orderTotal,
+            amount: orderTotalNGN,
             description: `Order payment via ${isNairaCurrency ? 'Paystack' : 'PayPal'} - ${product.name}`,
             reference: reference || order.id,
             status: 'completed',
-            currency: userCurrency
+            currency: userCurrency,
+            original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null,
+            exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null,
+            payment_provider: isNairaCurrency ? 'paystack' : 'paypal'
           });
 
         if (transactionError) throw transactionError;
@@ -592,46 +605,49 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
       {/* Payment Modal */}
       <Modal
-  visible={showPaymentModal}
-  animationType="slide"
-  presentationStyle="pageSheet"
-  onRequestClose={handlePaymentCancel}
->
-  <SafeAreaView style={styles.paystackModalContainer}>
-    <View style={styles.paystackModalHeader}>
-      <Text style={styles.paystackModalTitle}>
-        Complete Payment - {formatCurrency(total, userCurrency)}
-      </Text>
-      <Pressable style={styles.closeButton} onPress={handlePaymentCancel}>
-        <X size={24} color="#1F2937" />
-      </Pressable>
-    </View>
-
-    {/* ✅ Correctly rendered condition */}
-    {showPaymentModal && user && profile && (
-      <>
-        {isNairaCurrency ? (
-          <PaystackPayment
-            email={user.email || profile.email}
-            amount={total}
-            publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
-            customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
-            onSuccess={handlePaymentSuccess}
-            onCancel={handlePaymentCancel}
-          />
-        ) : (
-          <PayPalPayment
-            email={user.email || profile.email}
-            amount={total}
-            currency={userCurrency}
-            onSuccess={handlePaymentSuccess}
-            onCancel={handlePaymentCancel}
-          />
-        )}
-      </>
-    )}
-  </SafeAreaView>
-</Modal>
+        visible={showPaymentModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handlePaymentCancel}
+      >
+        <SafeAreaView style={styles.paystackModalContainer}>
+          <View style={styles.paystackModalHeader}>
+            <Text style={styles.paystackModalTitle}>
+              Complete Payment - {formatCurrency(total, userCurrency)}
+            </Text>
+            <Pressable style={styles.closeButton} onPress={handlePaymentCancel}>
+              <X size={24} color="#1F2937" />
+            </Pressable>
+          </View>
+          
+          {showPaymentModal && user && profile && (
+            <>
+              {isNairaCurrency ? (
+                // Paystack for NGN
+                <PaystackPayment
+                  email={user.email || profile.email}
+                  amount={total}
+                  publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
+                  customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
+                  onSuccess={handlePaymentSuccess}
+                  onCancel={handlePaymentCancel}
+                />
+              ) : (
+                // PayPal for other currencies
+                <PayPalPayment
+                  email={user.email || profile.email}
+                  amount={total}
+                  currency={userCurrency}
+                  customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
+                  description={`Payment for ${product.name}`}
+                  onSuccess={handlePaymentSuccess}
+                  onCancel={handlePaymentCancel}
+                />
+              )}
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
     </>
   );
 }
@@ -914,5 +930,36 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
+  },
+  paypalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  paypalText: {
+    fontSize: 18,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  paypalSubtext: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  switchCurrencyButton: {
+    backgroundColor: '#0070BA',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  switchCurrencyText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
 });

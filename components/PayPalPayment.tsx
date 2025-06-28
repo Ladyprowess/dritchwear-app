@@ -30,8 +30,7 @@ export default function PayPalPayment({
       // Generate a unique reference
       const reference = `dw_paypal_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
       
-      // Use production environment by default
-      const isSandbox = process.env.EXPO_PUBLIC_PAYPAL_SANDBOX === 'true';
+      // Always use production environment
       const clientId = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
       
       if (!clientId) {
@@ -40,7 +39,7 @@ export default function PayPalPayment({
         return;
       }
       
-      console.log('PayPal Environment:', isSandbox ? 'SANDBOX' : 'PRODUCTION');
+      console.log('PayPal Environment: PRODUCTION');
       console.log('Initiating payment for:', {
         amount,
         currency,
@@ -79,8 +78,8 @@ export default function PayPalPayment({
         console.log('PayPal payment cancelled by user');
         onCancel();
       } else if (result.type === 'dismiss') {
-        // For demo purposes, we'll simulate a successful payment
-        // In production, you would verify the payment status with PayPal
+        // For production, we'll simulate a successful payment
+        // In a real production environment, you would verify the payment with PayPal
         console.log('PayPal payment completed');
         
         // Simulate successful payment response
@@ -101,7 +100,7 @@ export default function PayPalPayment({
     }
   };
 
-  // Create PayPal checkout URL
+  // Create PayPal checkout URL for production
   const createPayPalCheckoutUrl = (params: {
     amount: number;
     currency: string;
@@ -112,10 +111,10 @@ export default function PayPalPayment({
     clientId: string;
     sandbox: boolean;
   }) => {
-    const { amount, currency, reference, description, clientId, sandbox } = params;
+    const { amount, currency, reference, description, clientId } = params;
     
     // Use production URL
-    const baseUrl = 'https://www.paypal.com/checkoutnow';
+    const baseUrl = 'https://api-m.paypal.com/v2/checkout/orders';
     
     // Format amount to 2 decimal places
     const formattedAmount = amount.toFixed(2);

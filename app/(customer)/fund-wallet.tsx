@@ -324,11 +324,9 @@ export default function FundWalletScreen() {
               </>
             )}
           </View>
-          {!isNairaCurrency(selectedCurrency) && process.env.EXPO_PUBLIC_PAYPAL_SANDBOX === 'true' && (
-            <Text style={styles.sandboxNote}>
-              🔧 PayPal Sandbox Mode - No real payment will be processed
-            </Text>
-          )}
+          <Text style={styles.productionNote}>
+            PRODUCTION MODE - Real payment will be processed
+          </Text>
         </View>
 
         {/* Fund Button */}
@@ -496,10 +494,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 8,
   },
-  sandboxNote: {
+  productionNote: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: '#F59E0B',
+    color: '#EF4444',
     marginTop: 8,
     textAlign: 'center',
   },

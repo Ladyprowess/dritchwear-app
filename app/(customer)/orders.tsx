@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import PaystackPayment from '@/components/PaystackPayment';
+import PayPalPayment from '@/components/PayPalPayment';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Order {
@@ -55,6 +56,7 @@ export default function CustomerOrdersScreen() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [processingInvoice, setProcessingInvoice] = useState<string | null>(null);
   const [showPaystack, setShowPaystack] = useState(false);
+  const [showPayPal, setShowPayPal] = useState(false);
   const [paymentInvoice, setPaymentInvoice] = useState<Invoice | null>(null);
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
 
@@ -287,8 +289,8 @@ export default function CustomerOrdersScreen() {
           onPress: () => handleWalletPayment(invoice, customRequest)
         },
         {
-          text: 'Card/Bank Transfer',
-          onPress: () => handlePaystackPayment(invoice, customRequest)
+          text: invoice.currency === 'NGN' ? 'Card/Bank Transfer' : 'PayPal',
+          onPress: () => handleOnlinePayment(invoice, customRequest)
         }
       ]
     );
@@ -349,19 +351,36 @@ export default function CustomerOrdersScreen() {
     }
   };
 
-  const handlePaystackPayment = (invoice: Invoice, customRequest: Order) => {
-    if (!process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY) {
-      Alert.alert(
-        'Payment Not Available',
-        'Online payment is not configured. Please use wallet payment or contact support.',
-        [{ text: 'OK' }]
-      );
-      return;
+  const handleOnlinePayment = (invoice: Invoice, customRequest: Order) => {
+    const isNaira = (invoice.currency || 'NGN') === 'NGN';
+    
+    if (isNaira) {
+      if (!process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY) {
+        Alert.alert(
+          'Payment Not Available',
+          'Online payment is not configured. Please use wallet payment or contact support.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      setPaymentInvoice(invoice);
+      setPaymentOrder(customRequest);
+      setShowPaystack(true);
+    } else {
+      if (!process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID) {
+        Alert.alert(
+          'Payment Not Available',
+          'PayPal is not configured. Please use wallet payment or contact support.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      setPaymentInvoice(invoice);
+      setPaymentOrder(customRequest);
+      setShowPayPal(true);
     }
-
-    setPaymentInvoice(invoice);
-    setPaymentOrder(customRequest);
-    setShowPaystack(true);
   };
 
   const handlePaystackSuccess = async (response: any) => {
@@ -402,6 +421,49 @@ export default function CustomerOrdersScreen() {
 
   const handlePaystackCancel = () => {
     setShowPaystack(false);
+    setPaymentInvoice(null);
+    setPaymentOrder(null);
+    Alert.alert('Payment Cancelled', 'Your payment was cancelled');
+  };
+  
+  const handlePayPalSuccess = async (response: any) => {
+    setShowPayPal(false);
+    
+    if (!paymentInvoice || !paymentOrder) return;
+
+    try {
+      // For PayPal payments, DO NOT deduct from wallet
+      console.log('Processing PayPal payment for custom order - NO wallet deduction');
+      
+      // Create transaction record ONLY - DO NOT touch wallet
+      const { error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: user!.id,
+          type: 'debit',
+          amount: paymentInvoice.amount,
+          description: `Payment for custom order: ${paymentOrder.title}`,
+          reference: response.reference || response.transactionId,
+          status: 'completed',
+          currency: paymentInvoice.currency || 'USD',
+          original_amount: paymentInvoice.original_amount,
+          payment_provider: 'paypal'
+        });
+
+      if (transactionError) throw transactionError;
+
+      await completePayment(paymentInvoice, paymentOrder, 'paypal');
+    } catch (error) {
+      console.error('Error processing PayPal payment:', error);
+      Alert.alert('Error', 'Payment was successful but failed to update order. Please contact support.');
+    } finally {
+      setPaymentInvoice(null);
+      setPaymentOrder(null);
+    }
+  };
+
+  const handlePayPalCancel = () => {
+    setShowPayPal(false);
     setPaymentInvoice(null);
     setPaymentOrder(null);
     Alert.alert('Payment Cancelled', 'Your payment was cancelled');
@@ -686,6 +748,35 @@ export default function CustomerOrdersScreen() {
               customerName={user.user_metadata?.full_name || 'Customer'}
               onSuccess={handlePaystackSuccess}
               onCancel={handlePaystackCancel}
+            />
+          )}
+        </SafeAreaView>
+      </Modal>
+      
+      {/* PayPal Payment Modal */}
+      <Modal
+        visible={showPayPal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handlePayPalCancel}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Complete Payment</Text>
+            <Pressable style={styles.closeButton} onPress={handlePayPalCancel}>
+              <XCircle size={24} color="#1F2937" />
+            </Pressable>
+          </View>
+          
+          {showPayPal && paymentInvoice && paymentOrder && user && (
+            <PayPalPayment
+              email={user.email || ''}
+              amount={paymentInvoice.original_amount || paymentInvoice.amount}
+              currency={paymentInvoice.currency || 'USD'}
+              customerName={user.user_metadata?.full_name || 'Customer'}
+              description={`Payment for custom order: ${paymentOrder.title}`}
+              onSuccess={handlePayPalSuccess}
+              onCancel={handlePayPalCancel}
             />
           )}
         </SafeAreaView>
