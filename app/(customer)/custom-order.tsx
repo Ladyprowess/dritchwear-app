@@ -1,22 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Sparkles, Package, DollarSign, FileText } from 'lucide-react-native';
-
-const budgetRanges = [
-  '₦10,000 - ₦25,000',
-  '₦25,000 - ₦50,000',
-  '₦50,000 - ₦100,000',
-  '₦100,000 - ₦200,000',
-  '₦200,000+',
-];
+import { generateBudgetRanges, parseBudgetRangeToNGN } from '@/lib/currency';
 
 export default function CustomOrderScreen() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -24,6 +17,15 @@ export default function CustomOrderScreen() {
     budgetRange: '',
   });
   const [loading, setLoading] = useState(false);
+  const [budgetRanges, setBudgetRanges] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (profile) {
+      // Generate budget ranges in user's preferred currency
+      const ranges = generateBudgetRanges(profile.preferred_currency || 'NGN');
+      setBudgetRanges(ranges);
+    }
+  }, [profile]);
 
   const handleSubmit = async () => {
     if (!formData.title.trim() || !formData.description.trim() || !formData.budgetRange) {
@@ -31,7 +33,7 @@ export default function CustomOrderScreen() {
       return;
     }
 
-    if (!user) {
+    if (!user || !profile) {
       Alert.alert('Error', 'You must be logged in to submit a custom order');
       return;
     }
@@ -39,6 +41,12 @@ export default function CustomOrderScreen() {
     setLoading(true);
 
     try {
+      // Convert budget range to NGN for storage if needed
+      const ngnBudgetRange = parseBudgetRangeToNGN(
+        formData.budgetRange, 
+        profile.preferred_currency || 'NGN'
+      );
+
       const { error } = await supabase
         .from('custom_requests')
         .insert({
@@ -47,6 +55,7 @@ export default function CustomOrderScreen() {
           description: formData.description.trim(),
           quantity: parseInt(formData.quantity) || 1,
           budget_range: formData.budgetRange,
+          currency: profile.preferred_currency || 'NGN',
         });
 
       if (error) throw error;

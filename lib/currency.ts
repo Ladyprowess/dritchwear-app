@@ -141,3 +141,115 @@ export async function updateExchangeRates(): Promise<void> {
   // For now, we'll use static rates
   console.log('Exchange rates updated (using static rates for demo)');
 }
+
+// Format budget range in user's preferred currency
+export function formatBudgetRange(budgetRange: string, preferredCurrency: string): string {
+  // Parse the budget range from NGN format (e.g., "₦10,000 - ₦25,000")
+  const matches = budgetRange.match(/₦([\d,]+)\s*-\s*₦([\d,]+)/);
+  
+  if (!matches || matches.length < 3) {
+    // If not in expected format, return as is
+    return budgetRange;
+  }
+  
+  // Parse the min and max values, removing commas
+  const minNGN = parseFloat(matches[1].replace(/,/g, ''));
+  const maxNGN = parseFloat(matches[2].replace(/,/g, ''));
+  
+  if (isNaN(minNGN) || isNaN(maxNGN)) {
+    return budgetRange;
+  }
+  
+  // If already in NGN and preferred currency is NGN, return as is
+  if (preferredCurrency === 'NGN') {
+    return budgetRange;
+  }
+  
+  // Convert to preferred currency
+  const minConverted = convertFromNGN(minNGN, preferredCurrency);
+  const maxConverted = convertFromNGN(maxNGN, preferredCurrency);
+  
+  // Format the values in the preferred currency
+  return `${formatCurrency(minConverted, preferredCurrency)} - ${formatCurrency(maxConverted, preferredCurrency)}`;
+}
+
+// Parse budget range from any currency to NGN for storage
+export function parseBudgetRangeToNGN(budgetRange: string, fromCurrency: string): string {
+  if (fromCurrency === 'NGN') {
+    return budgetRange;
+  }
+  
+  // Try to extract numeric values from the budget range
+  // This regex should match patterns like "$10 - $25", "€10-€25", "10 USD - 25 USD", etc.
+  const regex = /(\d[\d,.]*)\s*(?:[^\d\s-]+)?\s*-\s*(\d[\d,.]*)/;
+  const matches = budgetRange.match(regex);
+  
+  if (!matches || matches.length < 3) {
+    // If not in expected format, return as is
+    return budgetRange;
+  }
+  
+  // Parse the min and max values, removing commas
+  const minValue = parseFloat(matches[1].replace(/,/g, ''));
+  const maxValue = parseFloat(matches[2].replace(/,/g, ''));
+  
+  if (isNaN(minValue) || isNaN(maxValue)) {
+    return budgetRange;
+  }
+  
+  // Convert to NGN
+  const minNGN = convertToNGN(minValue, fromCurrency);
+  const maxNGN = convertToNGN(maxValue, fromCurrency);
+  
+  // Format as NGN budget range
+  return `₦${Math.round(minNGN).toLocaleString()} - ₦${Math.round(maxNGN).toLocaleString()}`;
+}
+
+// Generate a budget range in the user's preferred currency
+export function generateBudgetRanges(preferredCurrency: string): string[] {
+  if (preferredCurrency === 'NGN') {
+    return [
+      '₦10,000 - ₦25,000',
+      '₦25,000 - ₦50,000',
+      '₦50,000 - ₦100,000',
+      '₦100,000 - ₦200,000',
+      '₦200,000+'
+    ];
+  }
+  
+  const currency = getCurrencyByCode(preferredCurrency);
+  if (!currency) {
+    return [
+      '₦10,000 - ₦25,000',
+      '₦25,000 - ₦50,000',
+      '₦50,000 - ₦100,000',
+      '₦100,000 - ₦200,000',
+      '₦200,000+'
+    ];
+  }
+  
+  // Convert NGN ranges to preferred currency
+  const ranges = [
+    [10000, 25000],
+    [25000, 50000],
+    [50000, 100000],
+    [100000, 200000]
+  ];
+  
+  const formattedRanges = ranges.map(([min, max]) => {
+    const minConverted = convertFromNGN(min, preferredCurrency);
+    const maxConverted = convertFromNGN(max, preferredCurrency);
+    
+    // Round to appropriate values based on currency
+    const roundedMin = Math.round(minConverted);
+    const roundedMax = Math.round(maxConverted);
+    
+    return `${formatCurrency(roundedMin, preferredCurrency)} - ${formatCurrency(roundedMax, preferredCurrency)}`;
+  });
+  
+  // Add the "plus" range
+  const highestMin = convertFromNGN(200000, preferredCurrency);
+  formattedRanges.push(`${formatCurrency(Math.round(highestMin), preferredCurrency)}+`);
+  
+  return formattedRanges;
+}

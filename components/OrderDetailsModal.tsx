@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
 
 interface OrderItem {
   product_id: string;
@@ -24,13 +25,14 @@ interface Order {
   total: number;
   payment_method?: string;
   payment_status?: string;
-  order_status: string;
+  order_status?: string;
   delivery_address?: string;
   created_at: string;
   profiles?: {
     full_name: string;
     email: string;
     wallet_balance: number;
+    preferred_currency?: string;
   };
   // Custom order fields
   title?: string;
@@ -38,6 +40,7 @@ interface Order {
   quantity?: number;
   budget_range?: string;
   status?: string;
+  currency?: string;
   invoices?: Invoice[];
 }
 
@@ -46,6 +49,8 @@ interface Invoice {
   amount: number;
   description: string;
   status: string;
+  currency: string;
+  original_amount: number;
   created_at: string;
 }
 
@@ -65,7 +70,7 @@ const customStatusOptions = [
 ];
 
 export default function OrderDetailsModal({ order, visible, onClose, onOrderUpdate }: OrderDetailsModalProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, profile } = useAuth();
   const [updating, setUpdating] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState({
@@ -78,12 +83,24 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   const isCustomOrder = !order.items;
   const currentStatus = isCustomOrder ? order.status : order.order_status;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  // Get customer's preferred currency for display
+  const customerCurrency = order.profiles?.preferred_currency || order.currency || 'NGN';
+
+  // Updated formatCurrency function to use customer's preferred currency
+  const formatCurrencyInCustomerPreference = (amount: number, originalCurrency: string = 'NGN') => {
+    if (customerCurrency === originalCurrency) {
+      return formatCurrency(amount, customerCurrency);
+    }
+    
+    // Convert from original currency to customer's preferred currency
+    let convertedAmount = amount;
+    if (originalCurrency === 'NGN' && customerCurrency !== 'NGN') {
+      convertedAmount = convertFromNGN(amount, customerCurrency);
+    } else if (originalCurrency !== 'NGN' && customerCurrency === 'NGN') {
+      convertedAmount = convertToNGN(amount, originalCurrency);
+    }
+    
+    return formatCurrency(convertedAmount, customerCurrency);
   };
 
   const formatDate = (dateString: string) => {
@@ -176,12 +193,20 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
     }
 
     try {
+      const amountInCustomerCurrency = parseFloat(invoiceData.amount);
+      // Convert to NGN for storage (our base currency)
+      const amountInNGN = customerCurrency === 'NGN' ? 
+        amountInCustomerCurrency : 
+        convertToNGN(amountInCustomerCurrency, customerCurrency);
+
       const { error } = await supabase
         .from('invoices')
         .insert({
           custom_request_id: order.id,
           user_id: order.user_id,
-          amount: parseFloat(invoiceData.amount),
+          amount: amountInNGN, // Store in NGN
+          original_amount: amountInCustomerCurrency, // Store original amount
+          currency: customerCurrency, // Store customer's currency
           description: invoiceData.description,
           status: 'sent'
         });
@@ -196,7 +221,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
       if (statusError) throw statusError;
 
-      Alert.alert('Success', 'Invoice sent successfully');
+      Alert.alert('Success', `Invoice sent successfully in ${customerCurrency}`);
       setShowInvoiceModal(false);
       setInvoiceData({ amount: '', description: '' });
       onOrderUpdate();
@@ -279,6 +304,16 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </View>
                 )}
 
+                {isCustomOrder && (
+                  <View style={styles.infoRow}>
+                    <DollarSign size={20} color="#6B7280" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Customer Currency</Text>
+                      <Text style={styles.infoValue}>{customerCurrency}</Text>
+                    </View>
+                  </View>
+                )}
+
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
                     <MapPin size={20} color="#6B7280" />
@@ -305,36 +340,35 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
             {/* Status Management (Admin Only) */}
             {isAdmin && !['completed', 'cancelled', 'delivered', 'rejected'].includes(currentStatus || '') && (
-  <View style={styles.section}>
-    <Text style={styles.sectionTitle}>Status Management</Text>
-    <View style={styles.statusCard}>
-      <Text style={styles.updateStatusLabel}>Update Status</Text>
-      <View style={styles.statusOptions}>
-        {(isCustomOrder ? customStatusOptions : statusOptions).map((status) => (
-          <Pressable
-            key={status}
-            style={[
-              styles.statusOption,
-              currentStatus === status && styles.statusOptionActive
-            ]}
-            onPress={() => handleStatusUpdate(status)}
-            disabled={updating || currentStatus === status}
-          >
-            <Text
-              style={[
-                styles.statusOptionText,
-                currentStatus === status && styles.statusOptionTextActive
-              ]}
-            >
-              {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  </View>
-)}
-
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Status Management</Text>
+                <View style={styles.statusCard}>
+                  <Text style={styles.updateStatusLabel}>Update Status</Text>
+                  <View style={styles.statusOptions}>
+                    {(isCustomOrder ? customStatusOptions : statusOptions).map((status) => (
+                      <Pressable
+                        key={status}
+                        style={[
+                          styles.statusOption,
+                          currentStatus === status && styles.statusOptionActive
+                        ]}
+                        onPress={() => handleStatusUpdate(status)}
+                        disabled={updating || currentStatus === status}
+                      >
+                        <Text
+                          style={[
+                            styles.statusOptionText,
+                            currentStatus === status && styles.statusOptionTextActive
+                          ]}
+                        >
+                          {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
 
             {/* Order Details */}
             {isCustomOrder ? (
@@ -357,7 +391,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                       <View key={invoice.id} style={styles.invoiceCard}>
                         <View style={styles.invoiceHeader}>
                           <Text style={styles.invoiceAmount}>
-                            {formatCurrency(invoice.amount)}
+                            {formatCurrency(invoice.original_amount || invoice.amount, invoice.currency || customerCurrency)}
                           </Text>
                           <Text style={[
                             styles.invoiceStatus,
@@ -375,15 +409,14 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
                 {/* Send Invoice Button - Only for admins */}
                 {isAdmin && isCustomOrder && !['completed', 'cancelled', 'rejected'].includes(currentStatus || '') && (
-  <Pressable
-    style={styles.sendInvoiceButton}
-    onPress={() => setShowInvoiceModal(true)}
-  >
-    <Send size={20} color="#FFFFFF" />
-    <Text style={styles.sendInvoiceText}>Send Invoice</Text>
-  </Pressable>
-)}
-
+                  <Pressable
+                    style={styles.sendInvoiceButton}
+                    onPress={() => setShowInvoiceModal(true)}
+                  >
+                    <Send size={20} color="#FFFFFF" />
+                    <Text style={styles.sendInvoiceText}>Send Invoice ({customerCurrency})</Text>
+                  </Pressable>
+                )}
               </View>
             ) : (
               <>
@@ -400,7 +433,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                         <Text style={styles.itemQuantity}>Qty: {item.quantity}</Text>
                       </View>
                       <Text style={styles.itemPrice}>
-                        {formatCurrency(item.price * item.quantity)}
+                        {formatCurrencyInCustomerPreference(item.price * item.quantity)}
                       </Text>
                     </View>
                   ))}
@@ -412,19 +445,19 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   <View style={styles.summaryCard}>
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Subtotal</Text>
-                      <Text style={styles.summaryValue}>{formatCurrency(order.subtotal || 0)}</Text>
+                      <Text style={styles.summaryValue}>{formatCurrencyInCustomerPreference(order.subtotal || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Service Fee</Text>
-                      <Text style={styles.summaryValue}>{formatCurrency(order.service_fee || 0)}</Text>
+                      <Text style={styles.summaryValue}>{formatCurrencyInCustomerPreference(order.service_fee || 0)}</Text>
                     </View>
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                      <Text style={styles.summaryValue}>{formatCurrency(order.delivery_fee || 0)}</Text>
+                      <Text style={styles.summaryValue}>{formatCurrencyInCustomerPreference(order.delivery_fee || 0)}</Text>
                     </View>
                     <View style={[styles.summaryRow, styles.summaryTotal]}>
                       <Text style={styles.summaryTotalLabel}>Total</Text>
-                      <Text style={styles.summaryTotalValue}>{formatCurrency(order.total)}</Text>
+                      <Text style={styles.summaryTotalValue}>{formatCurrencyInCustomerPreference(order.total)}</Text>
                     </View>
                   </View>
                 </View>
@@ -465,15 +498,15 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         >
           <View style={styles.modalOverlay}>
             <View style={styles.invoiceModalContent}>
-              <Text style={styles.invoiceModalTitle}>Send Invoice</Text>
+              <Text style={styles.invoiceModalTitle}>Send Invoice ({customerCurrency})</Text>
               
               <View style={styles.invoiceForm}>
-                <Text style={styles.invoiceFormLabel}>Amount (₦)</Text>
+                <Text style={styles.invoiceFormLabel}>Amount ({customerCurrency})</Text>
                 <TextInput
                   style={styles.invoiceFormInput}
                   value={invoiceData.amount}
                   onChangeText={(text) => setInvoiceData(prev => ({ ...prev, amount: text }))}
-                  placeholder="Enter amount"
+                  placeholder={`Enter amount in ${customerCurrency}`}
                   keyboardType="numeric"
                 />
 
@@ -486,6 +519,10 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   multiline
                   numberOfLines={3}
                 />
+
+                <Text style={styles.currencyNote}>
+                  💡 Invoice will be sent in customer's preferred currency: {customerCurrency}
+                </Text>
               </View>
 
               <View style={styles.invoiceModalActions}>
@@ -850,6 +887,14 @@ const styles = StyleSheet.create({
   invoiceFormTextArea: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  currencyNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#7C3AED',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
   },
   invoiceModalActions: {
     flexDirection: 'row',

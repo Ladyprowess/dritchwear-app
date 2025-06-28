@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import PaystackPayment from '@/components/PaystackPayment';
+import { formatCurrency, convertFromNGN } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -125,12 +126,14 @@ export default function CustomerOrdersScreen() {
     filterOrders(allItems, selectedStatus);
   }, [orders, customRequests, selectedStatus]);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
+  // Updated formatCurrency function to use user's preferred currency
+  const formatCurrencyInUserPreference = (amount: number) => {
+    if (!profile?.preferred_currency || profile.preferred_currency === 'NGN') {
+      return formatCurrency(amount, 'NGN');
+    }
+    
+    const convertedAmount = convertFromNGN(amount, profile.preferred_currency);
+    return formatCurrency(convertedAmount, profile.preferred_currency);
   };
 
   const formatDate = (dateString: string) => {
@@ -190,7 +193,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Invoice Accepted',
-          message: `Customer has accepted invoice for "${customRequest.title}" - Amount: ${formatCurrency(invoice.amount)}`,
+          message: `Customer has accepted invoice for "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount)}`,
           type: 'custom'
         });
 
@@ -238,7 +241,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Invoice Rejected',
-          message: `Customer has rejected invoice for "${customRequest.title}" - Amount: ${formatCurrency(invoice.amount)}`,
+          message: `Customer has rejected invoice for "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount)}`,
           type: 'custom'
         });
 
@@ -268,14 +271,14 @@ export default function CustomerOrdersScreen() {
 
     Alert.alert(
       'Choose Payment Method',
-      `Pay ${formatCurrency(invoice.amount)} for your custom order`,
+      `Pay ${formatCurrencyInUserPreference(invoice.amount)} for your custom order`,
       [
         {
           text: 'Cancel',
           style: 'cancel'
         },
         {
-          text: `Wallet (${formatCurrency(profile.wallet_balance)})`,
+          text: `Wallet (${formatCurrency(convertFromNGN(profile.wallet_balance, profile.preferred_currency || 'NGN'), profile.preferred_currency || 'NGN')})`,
           onPress: () => handleWalletPayment(invoice, customRequest)
         },
         {
@@ -292,7 +295,7 @@ export default function CustomerOrdersScreen() {
     if (profile.wallet_balance < invoice.amount) {
       Alert.alert(
         'Insufficient Balance',
-        `Your wallet balance is ${formatCurrency(profile.wallet_balance)}. You need ${formatCurrency(invoice.amount)} to complete this payment.`,
+        `Your wallet balance is ${formatCurrency(convertFromNGN(profile.wallet_balance, profile.preferred_currency || 'NGN'), profile.preferred_currency || 'NGN')}. You need ${formatCurrencyInUserPreference(invoice.amount)} to complete this payment.`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Fund Wallet', onPress: () => {
@@ -417,7 +420,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Payment Received',
-          message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatCurrency(invoice.amount)} via ${paymentMethod}`,
+          message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount)} via ${paymentMethod}`,
           type: 'order'
         });
 
@@ -479,7 +482,7 @@ export default function CustomerOrdersScreen() {
           
           <View style={styles.orderRight}>
             <Text style={styles.orderAmount}>
-              {isCustom ? item.budget_range : formatCurrency(item.total)}
+              {isCustom ? item.budget_range : formatCurrencyInUserPreference(item.total)}
             </Text>
             <View
               style={[
@@ -506,7 +509,7 @@ export default function CustomerOrdersScreen() {
               <View key={invoice.id} style={styles.invoiceItem}>
                 <View style={styles.invoiceHeader}>
                   <Text style={styles.invoiceAmount}>
-                    {formatCurrency(invoice.amount)}
+                    {formatCurrencyInUserPreference(invoice.amount)}
                   </Text>
                   <Text style={[
                     styles.invoiceStatus,
@@ -550,7 +553,7 @@ export default function CustomerOrdersScreen() {
                     onPress={() => handlePayForCustomOrder(invoice, item)}
                   >
                     <Text style={styles.payNowButtonText}>
-                      Pay Now - {formatCurrency(invoice.amount)}
+                      Pay Now - {formatCurrencyInUserPreference(invoice.amount)}
                     </Text>
                   </Pressable>
                 )}
