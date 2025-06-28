@@ -19,7 +19,7 @@ interface Product {
   stock: number;
 }
 
-const categories = ['All', 'T-Shirts', 'Hoodies', 'Bottoms', 'Accessories'];
+const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals'];
 
 export default function ShopScreen() {
   const { user, profile, refreshProfile } = useAuth();
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
   },
   categoryChip: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 20,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,

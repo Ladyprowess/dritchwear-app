@@ -47,7 +47,7 @@ interface ProductFormData {
   is_active: boolean;
 }
 
-const categories = ['T-Shirts', 'Hoodies', 'Bottoms', 'Accessories', 'Footwear', 'Outerwear'];
+const categories = ['T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Shorts', 'Shirts', 'Casuals'];
 const defaultSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const defaultColors = ['Black', 'White', 'Navy', 'Grey', 'Beige', 'Brown'];
 
