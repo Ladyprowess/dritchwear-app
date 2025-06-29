@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe } from 'lucide-react-native';
@@ -78,6 +78,16 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
     amount: '',
     description: '',
   });
+  const [canSendInvoice, setCanSendInvoice] = useState(true);
+
+  useEffect(() => {
+    // Check if an invoice can be sent for this order
+    if (order && isAdmin && order.invoices && order.invoices.length > 0) {
+      setCanSendInvoice(false);
+    } else {
+      setCanSendInvoice(true);
+    }
+  }, [order, isAdmin]);
 
   if (!order) return null;
 
@@ -96,6 +106,8 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   };
 
   const actualPaymentCurrency = getActualPaymentCurrency();
+  const customerCurrency = actualPaymentCurrency;
+
 
   // FIXED: Format amounts using the actual payment currency
   const formatAmountInPaymentCurrency = (amount: number) => {
@@ -423,15 +435,25 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </View>
                 )}
 
-                {/* Send Invoice Button - Only for admins */}
-                {isAdmin && isCustomOrder && !['completed', 'cancelled', 'rejected'].includes(currentStatus || '') && (
+                {/* Send Invoice Button - Only for admins and only if no invoice has been sent yet */}
+                {isAdmin && isCustomOrder && !['completed', 'cancelled', 'rejected'].includes(currentStatus || '') && canSendInvoice && (
                   <Pressable
                     style={styles.sendInvoiceButton}
                     onPress={() => setShowInvoiceModal(true)}
                   >
                     <Send size={20} color="#FFFFFF" />
-                    <Text style={styles.sendInvoiceText}>Send Invoice ({actualPaymentCurrency})</Text>
+                    <Text style={styles.sendInvoiceText}>Send Invoice ({customerCurrency})</Text>
                   </Pressable>
+                )}
+                
+                {/* Message when invoice already sent */}
+                {isAdmin && isCustomOrder && !canSendInvoice && (
+                  <View style={styles.invoiceSentInfo}>
+                    <CheckCircle size={16} color="#10B981" />
+                    <Text style={styles.invoiceSentText}>
+                      Invoice has already been sent for this order
+                    </Text>
+                  </View>
                 )}
               </View>
             ) : (
@@ -517,15 +539,15 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         >
           <View style={styles.modalOverlay}>
             <View style={styles.invoiceModalContent}>
-              <Text style={styles.invoiceModalTitle}>Send Invoice ({actualPaymentCurrency})</Text>
+              <Text style={styles.invoiceModalTitle}>Send Invoice ({customerCurrency})</Text>
               
               <View style={styles.invoiceForm}>
-                <Text style={styles.invoiceFormLabel}>Amount ({actualPaymentCurrency})</Text>
+                <Text style={styles.invoiceFormLabel}>Amount ({customerCurrency})</Text>
                 <TextInput
                   style={styles.invoiceFormInput}
                   value={invoiceData.amount}
                   onChangeText={(text) => setInvoiceData(prev => ({ ...prev, amount: text }))}
-                  placeholder={`Enter amount in ${actualPaymentCurrency}`}
+                  placeholder={`Enter amount in ${customerCurrency}`}
                   keyboardType="numeric"
                 />
 
@@ -540,7 +562,10 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                 />
 
                 <Text style={styles.currencyNote}>
-                  💡 Invoice will be sent in payment currency: {actualPaymentCurrency}
+                  💡 Invoice will be sent in customer's preferred currency: {customerCurrency}
+                </Text>
+                <Text style={styles.invoiceNote}>
+                  ⚠️ Note: Only one invoice can be sent per custom order
                 </Text>
               </View>
 
@@ -769,6 +794,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
   },
+  invoiceSentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  invoiceSentText: {
+    fontSize: 14,
+    fontFamily: 'Inter-Medium',
+    color: '#10B981',
+  },
   itemCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -919,6 +958,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#7C3AED',
     fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  invoiceNote: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#EF4444',
     textAlign: 'center',
     marginTop: 8,
   },

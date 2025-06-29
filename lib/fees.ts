@@ -19,8 +19,6 @@ export const DELIVERY_FEES_BY_CURRENCY: Record<string, { local: number; national
   CNY: { local: 30, national: 50, international: 150 },
   INR: { local: 300, national: 500, international: 1500 },
   ZAR: { local: 80, national: 120, international: 400 },
-  KES: { local: 500, national: 800, international: 2500 },
-  GHS: { local: 30, national: 50, international: 150 },
 };
 
 export function calculateDeliveryFee(location: string, currency: string = 'NGN'): number {

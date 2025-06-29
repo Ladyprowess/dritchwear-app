@@ -20,8 +20,6 @@ export const SUPPORTED_CURRENCIES: Currency[] = [
   { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', flag: '🇨🇳' },
   { code: 'INR', name: 'Indian Rupee', symbol: '₹', flag: '🇮🇳' },
   { code: 'ZAR', name: 'South African Rand', symbol: 'R', flag: '🇿🇦' },
-  { code: 'KES', name: 'Kenyan Shilling', symbol: 'KSh', flag: '🇰🇪' },
-  { code: 'GHS', name: 'Ghanaian Cedi', symbol: '₵', flag: '🇬🇭' },
 ];
 
 // Exchange rates relative to NGN (Nigerian Naira as base)
@@ -38,8 +36,6 @@ export const EXCHANGE_RATES: Record<string, number> = {
   CNY: 0.0048, // 1 NGN = 0.0048 CNY
   INR: 0.056, // 1 NGN = 0.056 INR
   ZAR: 0.012, // 1 NGN = 0.012 ZAR
-  KES: 0.086, // 1 NGN = 0.086 KES
-  GHS: 0.0099, // 1 NGN = 0.0099 GHS
 };
 
 export function getCurrencyByCode(code: string): Currency | undefined {
@@ -140,10 +136,6 @@ export function getMinimumOrderAmount(currencyCode: string): number {
       return 50; // ₹50
     case 'ZAR':
       return 10; // R10
-    case 'KES':
-      return 100; // KSh100
-    case 'GHS':
-      return 5; // ₵5
     default:
       return 1;
   }

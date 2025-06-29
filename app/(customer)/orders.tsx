@@ -132,7 +132,24 @@ export default function CustomerOrdersScreen() {
     filterOrders(allItems, selectedStatus);
   }, [orders, customRequests, selectedStatus]);
 
-  // Updated formatCurrency function to use user's preferred currency
+  // FIXED: Proper currency formatting for invoices
+  const formatInvoiceAmount = (invoice: Invoice) => {
+    // Use the original amount and currency from the invoice if available
+    if (invoice.original_amount && invoice.currency) {
+      return formatCurrency(invoice.original_amount, invoice.currency);
+    }
+    
+    // Fallback to the stored amount (which is in NGN) and convert to user's preferred currency
+    if (profile?.preferred_currency && profile.preferred_currency !== 'NGN') {
+      const convertedAmount = convertFromNGN(invoice.amount, profile.preferred_currency);
+      return formatCurrency(convertedAmount, profile.preferred_currency);
+    }
+    
+    // Default to NGN
+    return formatCurrency(invoice.amount, 'NGN');
+  };
+
+  // Updated formatCurrency function to use user's preferred currency for regular orders
   const formatCurrencyInUserPreference = (amount: number, currencyCode?: string) => {
     const displayCurrency = currencyCode || profile?.preferred_currency || 'NGN';
     
@@ -201,7 +218,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Invoice Accepted',
-          message: `Customer has accepted invoice for "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount, invoice.currency)}`,
+          message: `Customer has accepted invoice for "${customRequest.title}" - Amount: ${formatInvoiceAmount(invoice)}`,
           type: 'custom'
         });
 
@@ -249,7 +266,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Invoice Rejected',
-          message: `Customer has rejected invoice for "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount, invoice.currency)}`,
+          message: `Customer has rejected invoice for "${customRequest.title}" - Amount: ${formatInvoiceAmount(invoice)}`,
           type: 'custom'
         });
 
@@ -277,9 +294,12 @@ export default function CustomerOrdersScreen() {
       return;
     }
 
+    // Get the correct amount to display in the alert
+    const displayAmount = formatInvoiceAmount(invoice);
+
     Alert.alert(
       'Choose Payment Method',
-      `Pay ${formatCurrencyInUserPreference(invoice.amount, invoice.currency)} for your custom order`,
+      `Pay ${displayAmount} for your custom order`,
       [
         {
           text: 'Cancel',
@@ -303,7 +323,7 @@ export default function CustomerOrdersScreen() {
     if (profile.wallet_balance < invoice.amount) {
       Alert.alert(
         'Insufficient Balance',
-        `Your wallet balance is ${formatCurrency(convertFromNGN(profile.wallet_balance, profile.preferred_currency || 'NGN'), profile.preferred_currency || 'NGN')}. You need ${formatCurrencyInUserPreference(invoice.amount, invoice.currency)} to complete this payment.`,
+        `Your wallet balance is ${formatCurrency(convertFromNGN(profile.wallet_balance, profile.preferred_currency || 'NGN'), profile.preferred_currency || 'NGN')}. You need ${formatInvoiceAmount(invoice)} to complete this payment.`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Fund Wallet', onPress: () => {
@@ -498,7 +518,7 @@ export default function CustomerOrdersScreen() {
         .insert({
           user_id: null, // Broadcast to all admins
           title: 'Payment Received',
-          message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatCurrencyInUserPreference(invoice.amount, invoice.currency)} via ${paymentMethod}`,
+          message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatInvoiceAmount(invoice)} via ${paymentMethod}`,
           type: 'order'
         });
 
@@ -592,10 +612,7 @@ export default function CustomerOrdersScreen() {
               <View key={invoice.id} style={styles.invoiceItem}>
                 <View style={styles.invoiceHeader}>
                   <Text style={styles.invoiceAmount}>
-                    {formatCurrencyInUserPreference(
-                      invoice.original_amount || invoice.amount, 
-                      invoice.currency || orderCurrency
-                    )}
+                    {formatInvoiceAmount(invoice)}
                   </Text>
                   <Text style={[
                     styles.invoiceStatus,
@@ -639,10 +656,7 @@ export default function CustomerOrdersScreen() {
                     onPress={() => handlePayForCustomOrder(invoice, item)}
                   >
                     <Text style={styles.payNowButtonText}>
-                      Pay Now - {formatCurrencyInUserPreference(
-                        invoice.original_amount || invoice.amount, 
-                        invoice.currency || orderCurrency
-                      )}
+                      Pay Now - {formatInvoiceAmount(invoice)}
                     </Text>
                   </Pressable>
                 )}
