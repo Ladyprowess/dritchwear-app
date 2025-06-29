@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "dritchwear",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -38,6 +38,14 @@
     "updates": {
       "url": "https://u.expo.dev/99a85905-b370-4a58-b525-5de48d3b5568"
     },
-    "android": {}
+    "android": {
+      "package": "com.dritchwear.app",
+      "versionCode": 1,
+      "permissions": ["NOTIFICATIONS"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    }
   }
 }
