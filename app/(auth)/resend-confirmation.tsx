@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { resendConfirmation } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import { ArrowLeft, Mail, Send, CheckCircle } from 'lucide-react-native';
 
 export default function ResendConfirmationScreen() {
@@ -23,14 +23,22 @@ export default function ResendConfirmationScreen() {
     }
 
     setLoading(true);
-    const { error } = await resendConfirmation(email);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
 
-    if (error) {
-      Alert.alert('Error', error.message);
-    } else {
-      setEmailSent(true);
+      if (error) {
+        Alert.alert('Error', error.message);
+      } else {
+        setEmailSent(true);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to resend confirmation email. Please try again.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (emailSent) {
@@ -62,7 +70,7 @@ export default function ResendConfirmationScreen() {
             </Text>
             
             <Text style={styles.instructionText}>
-              Click the link in the email to confirm your Dritchwear account. If you don't see the email, check your spam folder.
+              Click the link in the email to confirm your account. If you don't see the email, check your spam folder.
             </Text>
 
             <View style={styles.actionButtons}>
@@ -106,7 +114,7 @@ export default function ResendConfirmationScreen() {
           
           <Text style={styles.title}>Resend Confirmation</Text>
           <Text style={styles.subtitle}>
-            Enter your email address to receive a new Dritchwear confirmation email.
+            Enter your email address to receive a new confirmation email.
           </Text>
         </View>
 
@@ -127,7 +135,7 @@ export default function ResendConfirmationScreen() {
               />
             </View>
             <Text style={styles.inputHint}>
-              Make sure this is the same email you used to register with Dritchwear
+              Make sure this is the same email you used to register
             </Text>
           </View>
 
@@ -145,11 +153,10 @@ export default function ResendConfirmationScreen() {
           <View style={styles.infoCard}>
             <Text style={styles.infoTitle}>Why confirm your email?</Text>
             <View style={styles.infoList}>
-              <Text style={styles.infoItem}>• Secure your Dritchwear account</Text>
-              <Text style={styles.infoItem}>• Receive order updates and tracking</Text>
-              <Text style={styles.infoItem}>• Get exclusive fashion offers</Text>
+              <Text style={styles.infoItem}>• Secure your account</Text>
+              <Text style={styles.infoItem}>• Receive order updates</Text>
+              <Text style={styles.infoItem}>• Get exclusive offers</Text>
               <Text style={styles.infoItem}>• Reset your password if needed</Text>
-              <Text style={styles.infoItem}>• Access premium customer support</Text>
             </View>
           </View>
 
@@ -160,7 +167,7 @@ export default function ResendConfirmationScreen() {
                 style={styles.footerLink}
                 onPress={() => router.push('/(customers)/help-support')}
               >
-                Contact Dritchwear Support
+                Contact Support
               </Text>
             </Text>
           </View>

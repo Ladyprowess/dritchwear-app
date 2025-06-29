@@ -1,57 +1,75 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ImageBackground, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-
-const { width, height } = Dimensions.get('window');
+import { LinearGradient } from 'expo-linear-gradient';
 
 export default function WelcomeScreen() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
-      <ImageBackground
-        source={{ uri: 'https://images.pexels.com/photos/8532616/pexels-photo-8532616.jpeg' }}
-        style={styles.backgroundImage}
-        resizeMode="cover"
+      <LinearGradient
+        colors={['#7C3AED', '#3B82F6']}
+        style={styles.gradient}
       >
-        <LinearGradient
-          colors={['rgba(124, 58, 237, 0.8)', 'rgba(59, 130, 246, 0.9)']}
-          style={styles.overlay}
-        >
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <Text style={styles.brandName}>Dritchwear</Text>
-              <Text style={styles.tagline}>Premium Fashion for Everyone</Text>
+        <View style={styles.content}>
+          {/* Logo/Brand Section */}
+          <View style={styles.brandSection}>
+            <View style={styles.logoContainer}>
+              <Text style={styles.logoText}>D</Text>
             </View>
+            <Text style={styles.brandName}>Dritchwear</Text>
+            <Text style={styles.tagline}>Premium Fashion, Delivered</Text>
+          </View>
 
-            <View style={styles.footer}>
-              <Text style={styles.description}>
-                Discover our collection of premium ready-to-wear fashion and custom designs tailored just for you.
-              </Text>
-              
-              <View style={styles.buttonContainer}>
-                <Pressable
-                  style={[styles.button, styles.primaryButton]}
-                  onPress={() => router.push('/(auth)/register')}
-                >
-                  <Text style={[styles.buttonText, styles.primaryButtonText]}>Get Started</Text>
-                </Pressable>
-                
-                <Pressable
-                  style={[styles.button, styles.secondaryButton]}
-                  onPress={() => router.push('/(auth)/login')}
-                >
-                  <Text style={[styles.buttonText, styles.secondaryButtonText]}>Sign In</Text>
-                </Pressable>
-              </View>
+          {/* Hero Content */}
+          <View style={styles.heroSection}>
+            <Text style={styles.heroTitle}>
+              Welcome to{'\n'}Your Style Journey
+            </Text>
+            <Text style={styles.heroSubtitle}>
+              Discover premium fashion pieces crafted with excellence and delivered with care
+            </Text>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionSection}>
+            <Pressable
+              style={styles.primaryButton}
+              onPress={() => router.push('/(auth)/register')}
+            >
+              <Text style={styles.primaryButtonText}>Get Started</Text>
+            </Pressable>
+            
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => router.push('/(auth)/login')}
+            >
+              <Text style={styles.secondaryButtonText}>I Already Have an Account</Text>
+            </Pressable>
+          </View>
+
+          {/* Features */}
+          <View style={styles.featuresSection}>
+            <View style={styles.feature}>
+              <Text style={styles.featureIcon}>🚚</Text>
+              <Text style={styles.featureText}>Fast Delivery</Text>
+            </View>
+            <View style={styles.feature}>
+              <Text style={styles.featureIcon}>💎</Text>
+              <Text style={styles.featureText}>Premium Quality</Text>
+            </View>
+            <View style={styles.feature}>
+              <Text style={styles.featureIcon}>🌍</Text>
+              <Text style={styles.featureText}>Global Shipping</Text>
             </View>
           </View>
-        </LinearGradient>
-      </ImageBackground>
-    </View>
+        </View>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
@@ -59,79 +77,108 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  backgroundImage: {
+  gradient: {
     flex: 1,
-    width: '100%',
-    height: '100%',
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'space-between',
   },
   content: {
     flex: 1,
-    justifyContent: 'space-between',
     paddingHorizontal: 24,
-    paddingTop: height * 0.15,
-    paddingBottom: 50,
+    paddingTop: 40,
+    paddingBottom: 40,
+    justifyContent: 'space-between',
   },
-  header: {
+  brandSection: {
     alignItems: 'center',
+    marginTop: 20,
   },
-  brandName: {
-    fontSize: 48,
+  logoContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  logoText: {
+    fontSize: 36,
     fontFamily: 'Inter-Bold',
     color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: -1,
+  },
+  brandName: {
+    fontSize: 32,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
     marginBottom: 8,
   },
   tagline: {
-    fontSize: 18,
-    fontFamily: 'Inter-Medium',
-    color: '#F1F5F9',
-    textAlign: 'center',
-    opacity: 0.9,
-  },
-  footer: {
-    alignItems: 'center',
-  },
-  description: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#F1F5F9',
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  heroSection: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  heroTitle: {
+    fontSize: 36,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    lineHeight: 44,
+    marginBottom: 16,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 16,
   },
-  buttonContainer: {
-    width: '100%',
+  actionSection: {
     gap: 16,
   },
-  button: {
+  primaryButton: {
     height: 56,
+    backgroundColor: '#FFFFFF',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    width: '100%',
-  },
-  primaryButton: {
-    backgroundColor: '#FFFFFF',
-  },
-  secondaryButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
   },
   primaryButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
     color: '#7C3AED',
   },
+  secondaryButton: {
+    height: 56,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   secondaryButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
+  },
+  featuresSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 20,
+  },
+  feature: {
+    alignItems: 'center',
+  },
+  featureIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  featureText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Medium',
+    color: 'rgba(255, 255, 255, 0.8)',
   },
 });

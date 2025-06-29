@@ -23,7 +23,7 @@ export async function signUp({ email, password, fullName, phone }: AuthCredentia
   try {
     console.log('📝 Signing up user:', email);
     
-    // Use signUp but don't automatically sign in
+    // Sign up with email confirmation required
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -32,8 +32,8 @@ export async function signUp({ email, password, fullName, phone }: AuthCredentia
           full_name: fullName,
           phone: phone,
         },
-        // This is the key change - don't automatically sign in after registration
-        emailRedirectTo: `${window.location.origin}/login`,
+        // Use dritchwear.com domain for email confirmation
+        emailRedirectTo: `https://dritchwear.com/auth/confirm-email`,
       },
     });
 
@@ -44,13 +44,21 @@ export async function signUp({ email, password, fullName, phone }: AuthCredentia
     
     console.log('✅ Sign up successful:', data.user?.email);
     
-    // Sign out immediately to ensure the user is redirected to login
-    await supabase.auth.signOut();
+    // Check if email confirmation is required
+    if (data.user && !data.session) {
+      console.log('📧 Email confirmation required');
+      return { 
+        data, 
+        error: null, 
+        needsConfirmation: true,
+        email: data.user.email 
+      };
+    }
     
-    return { data, error: null };
+    return { data, error: null, needsConfirmation: false };
   } catch (error) {
     console.error('💥 Sign up catch error:', error);
-    return { data: null, error: error as AuthError };
+    return { data: null, error: error as AuthError, needsConfirmation: false };
   }
 }
 
@@ -64,6 +72,17 @@ export async function signIn({ email, password }: AuthCredentials) {
 
     if (error) {
       console.error('❌ Sign in error:', error);
+      
+      // Check if email is not confirmed
+      if (error.message.includes('Email not confirmed')) {
+        return { 
+          data: null, 
+          error, 
+          needsConfirmation: true,
+          email 
+        };
+      }
+      
       throw error;
     }
     
@@ -72,10 +91,10 @@ export async function signIn({ email, password }: AuthCredentials) {
     // Session will be automatically persisted by Supabase
     console.log('💾 Session persisted automatically');
     
-    return { data, error: null };
+    return { data, error: null, needsConfirmation: false };
   } catch (error) {
     console.error('💥 Sign in catch error:', error);
-    return { data: null, error: error as AuthError };
+    return { data: null, error: error as AuthError, needsConfirmation: false };
   }
 }
 
@@ -99,7 +118,8 @@ export async function resetPassword(email: string) {
   try {
     console.log('🔄 Requesting password reset for:', email);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      // Use dritchwear.com domain for password reset
+      redirectTo: `https://dritchwear.com/auth/reset-password`,
     });
     
     if (error) throw error;
@@ -139,6 +159,27 @@ export async function confirmPasswordReset(newPassword: string) {
     return { error: null };
   } catch (error) {
     console.error('❌ Password reset confirmation error:', error);
+    return { error: error as AuthError };
+  }
+}
+
+export async function resendConfirmation(email: string) {
+  try {
+    console.log('📧 Resending confirmation email for:', email);
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        // Use dritchwear.com domain for resent confirmation emails
+        emailRedirectTo: `https://dritchwear.com/auth/confirm-email`,
+      },
+    });
+    
+    if (error) throw error;
+    console.log('✅ Confirmation email resent');
+    return { error: null };
+  } catch (error) {
+    console.error('❌ Resend confirmation error:', error);
     return { error: error as AuthError };
   }
 }

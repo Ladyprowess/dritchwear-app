@@ -39,7 +39,7 @@ export default function RegisterScreen() {
     }
 
     setLoading(true);
-    const { error } = await signUp({ 
+    const { error, needsConfirmation, email: userEmail } = await signUp({ 
       email, 
       password, 
       fullName, 
@@ -48,10 +48,16 @@ export default function RegisterScreen() {
     
     if (error) {
       Alert.alert('Registration Failed', error.message);
+    } else if (needsConfirmation) {
+      // Redirect to email confirmation screen
+      router.replace({
+        pathname: '/(auth)/confirm-email',
+        params: { email: userEmail }
+      });
     } else {
       Alert.alert(
         'Registration Successful',
-        'Welcome to Dritchwear! Confirm your email and start shopping.',
+        'Welcome to Dritchwear! You can now start shopping.',
         [{ text: 'OK', onPress: () => router.replace('/') }]
       );
     }

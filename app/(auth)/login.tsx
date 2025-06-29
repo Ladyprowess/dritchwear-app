@@ -19,10 +19,27 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const { error } = await signIn({ email, password });
+    const { error, needsConfirmation, email: userEmail } = await signIn({ email, password });
     
     if (error) {
-      Alert.alert('Login Failed', error.message);
+      if (needsConfirmation) {
+        Alert.alert(
+          'Email Not Confirmed',
+          'Please confirm your email address before signing in. Check your email for a confirmation link.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Resend Email', 
+              onPress: () => router.push({
+                pathname: '/(auth)/resend-confirmation',
+                params: { email: userEmail || email }
+              })
+            }
+          ]
+        );
+      } else {
+        Alert.alert('Login Failed', error.message);
+      }
     } else {
       router.replace('/');
     }
@@ -112,6 +129,18 @@ export default function LoginScreen() {
                 onPress={() => router.push('/(auth)/register')}
               >
                 Sign Up
+              </Text>
+            </Text>
+          </View>
+
+          <View style={styles.helpSection}>
+            <Text style={styles.helpText}>
+              Need help with your account?{' '}
+              <Text 
+                style={styles.helpLink}
+                onPress={() => router.push('/(auth)/resend-confirmation')}
+              >
+                Resend confirmation email
               </Text>
             </Text>
           </View>
@@ -233,6 +262,23 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   footerLink: {
+    color: '#7C3AED',
+    fontFamily: 'Inter-SemiBold',
+  },
+  helpSection: {
+    alignItems: 'center',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  helpText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  helpLink: {
     color: '#7C3AED',
     fontFamily: 'Inter-SemiBold',
   },
