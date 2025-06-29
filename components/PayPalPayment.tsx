@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import * as WebBrowser from 'expo-web-browser';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 
 interface PayPalPaymentProps {
   email: string;
@@ -10,6 +11,7 @@ interface PayPalPaymentProps {
   onCancel: () => void;
   customerName?: string;
   description?: string;
+  userId?: string;
 }
 
 export default function PayPalPayment({
@@ -19,135 +21,258 @@ export default function PayPalPayment({
   onSuccess,
   onCancel,
   customerName = 'Customer',
-  description = 'Dritchwear Purchase'
+  description = 'Dritchwear Purchase',
+  userId
 }: PayPalPaymentProps) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+
   useEffect(() => {
-    initiatePayment();
+    createPayPalOrder();
   }, []);
 
-  const initiatePayment = async () => {
+  const createPayPalOrder = async () => {
     try {
-      // Generate a unique reference
-      const reference = `dw_paypal_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
-      
-      // Always use production environment
-      const clientId = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
-      
-      if (!clientId) {
-        console.error('PayPal Client ID not found in environment variables');
-        onCancel();
-        return;
-      }
-      
-      console.log('PayPal Environment: PRODUCTION');
-      console.log('Initiating payment for:', {
+      setLoading(true);
+      setError(null);
+
+      console.log('🚀 Creating PayPal order with enhanced data:', {
         amount,
         currency,
-        reference,
-        description,
-        customerEmail: email,
+        email,
         customerName,
+        description,
+        userId
+      });
+
+      const requestBody = {
+        action: 'create-order',
+        amount: amount,
+        currency: currency,
+        customerEmail: email,
+        customerName: customerName,
+        description: description,
+        userId: userId,
+        metadata: {
+          source: 'mobile_app',
+          platform: 'react_native',
+          timestamp: new Date().toISOString()
+        }
+      };
+
+      console.log('📤 Sending enhanced request:', JSON.stringify(requestBody, null, 2));
+
+      // Call the enhanced edge function
+      const { data, error: functionError } = await supabase.functions.invoke('paypal-payment', {
+        body: requestBody
       });
       
-      const paypalUrl = createPayPalCheckoutUrl({
-        amount,
-        currency,
-        reference,
-        description,
-        customerEmail: email,
-        customerName,
-        clientId,
-        sandbox: false, // Force production mode
-      });
 
-      console.log('Opening PayPal payment URL:', paypalUrl);
+      console.log('📥 Enhanced function response:', { data, error: functionError });
 
-      // Open the payment URL in the browser
-      const result = await WebBrowser.openBrowserAsync(paypalUrl, {
-        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
-        showTitle: true,
-        toolbarColor: '#0070BA', // PayPal blue
-        controlsColor: '#FFFFFF',
-        secondaryToolbarColor: '#003087', // Darker PayPal blue
-      });
-
-      console.log('WebBrowser result:', result);
-
-      // Handle the result
-      if (result.type === 'cancel') {
-        console.log('PayPal payment cancelled by user');
-        onCancel();
-      } else if (result.type === 'dismiss') {
-        // For production, we'll simulate a successful payment
-        // In a real production environment, you would verify the payment with PayPal
-        console.log('PayPal payment completed');
-        
-        // Simulate successful payment response
-        const mockResponse = {
-          reference,
-          status: 'success',
-          amount,
-          currency,
-          paymentMethod: 'paypal',
-          transactionId: `pp_${reference}`,
-        };
-        
-        onSuccess(mockResponse);
+      if (functionError) {
+        console.error('❌ Enhanced function error:', functionError);
+        throw new Error(`Function error: ${functionError.message || 'Unknown error'}`);
       }
+
+      if (!data) {
+        console.error('❌ No data returned from enhanced function');
+        throw new Error('No data returned from PayPal function');
+      }
+
+      if (!data.success) {
+        console.error('❌ Enhanced PayPal order creation failed:', data.error);
+        throw new Error(data.error || 'Failed to create PayPal order');
+      }
+
+      if (!data.approvalUrl || !data.orderId) {
+        console.error('❌ Missing required data in enhanced response:', data);
+        throw new Error('Invalid response from PayPal service');
+      }
+
+      setCurrentOrderId(data.orderId);
+      console.log('🎯 Opening enhanced PayPal approval URL:', data.approvalUrl);
+      await openPayPalApproval(data.approvalUrl, data.orderId);
+
     } catch (error) {
-      console.error('Error opening PayPal payment browser:', error);
-      onCancel();
+      console.error('💥 Error in enhanced createPayPalOrder:', error);
+      
+      let errorMessage = 'Failed to initialize PayPal payment';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        console.error('Enhanced error stack:', error.stack);
+      }
+      
+      setError(errorMessage);
+      
+      Alert.alert(
+        'Payment Error',
+        'Unable to initialize PayPal payment. Please try again or contact support.',
+        [{ text: 'OK', onPress: onCancel }]
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Create PayPal checkout URL for production
-  const createPayPalCheckoutUrl = (params: {
-    amount: number;
-    currency: string;
-    reference: string;
-    description: string;
-    customerEmail: string;
-    customerName: string;
-    clientId: string;
-    sandbox: boolean;
-  }) => {
-    const { amount, currency, reference, description, clientId } = params;
-    
-    // Use production URL
-    const baseUrl = 'https://api-m.paypal.com/v2/checkout/orders';
-    
-    // Format amount to 2 decimal places
-    const formattedAmount = amount.toFixed(2);
-    
-    // Build query parameters
-    const queryParams = new URLSearchParams({
-      token: `live_${reference}`, // Use live_ prefix for production
-      client_id: clientId,
-      amount: formattedAmount,
-      currency: currency,
-      description: description,
-      intent: 'capture',
-      'disable-funding': 'credit,card',
-      'buyer-country': 'US',
-    });
+  const openPayPalApproval = async (approvalUrl: string, orderId: string) => {
+    try {
+      console.log('🌐 Opening enhanced PayPal approval URL:', approvalUrl);
 
-    return `${baseUrl}?${queryParams.toString()}`;
+      const result = await WebBrowser.openBrowserAsync(approvalUrl, {
+        presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
+        showTitle: true,
+        toolbarColor: '#0070BA',
+        controlsColor: '#FFFFFF',
+        secondaryToolbarColor: '#003087',
+        browserPackage: undefined, // Let the system choose the best browser
+      });
+
+      console.log('🔄 Enhanced WebBrowser result:', result);
+
+      if (result.type === 'cancel') {
+        console.log('❌ Enhanced PayPal payment cancelled by user');
+        onCancel();
+      } else if (result.type === 'dismiss') {
+        console.log('✅ Enhanced PayPal flow completed, capturing payment...');
+        await capturePayPalOrder(orderId);
+      }
+
+    } catch (error) {
+      console.error('💥 Error opening enhanced PayPal approval:', error);
+      setError('Failed to open PayPal payment page');
+      Alert.alert(
+        'Payment Error',
+        'Unable to open PayPal payment page. Please try again.',
+        [{ text: 'OK', onPress: onCancel }]
+      );
+    }
   };
 
-  // This component shows a loading indicator while redirecting to PayPal
+  const capturePayPalOrder = async (orderId: string) => {
+    try {
+      setLoading(true);
+      console.log('💰 Capturing enhanced PayPal order:', orderId);
+
+      const { data, error: functionError } = await supabase.functions.invoke('paypal-payment', {
+        body: {
+          action: 'capture-order',
+          orderId,
+          userId
+        }
+      });
+      
+
+      console.log('📥 Enhanced capture response:', { data, error: functionError });
+
+      if (functionError) {
+        console.error('❌ Enhanced capture function error:', functionError);
+        throw new Error(functionError.message || 'Failed to capture PayPal payment');
+      }
+
+      if (!data || !data.success) {
+        console.error('❌ Enhanced PayPal capture failed:', data);
+        throw new Error(data?.error || 'Failed to capture PayPal payment');
+      }
+
+      console.log('🎉 Enhanced PayPal payment captured successfully:', data);
+
+      const successResponse = {
+        reference: data.transactionId || `pp_${orderId}`,
+        status: 'success',
+        amount,
+        currency,
+        paymentMethod: 'paypal',
+        transactionId: data.transactionId,
+        paypalOrderId: orderId,
+        captureResult: data.captureResult,
+        requestId: data.requestId
+      };
+
+      onSuccess(successResponse);
+
+    } catch (error) {
+      console.error('💥 Error capturing enhanced PayPal payment:', error);
+      
+      // Provide more helpful error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      Alert.alert(
+        'Payment Processing Error',
+        `There was an issue processing your payment: ${errorMessage}\n\nOrder ID: ${orderId}\n\nPlease contact support if this issue persists.`,
+        [
+          { text: 'Retry', onPress: () => capturePayPalOrder(orderId) },
+          { text: 'Cancel', onPress: onCancel }
+        ]
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkOrderStatus = async () => {
+    if (!currentOrderId) return;
+
+    try {
+      console.log('📋 Checking enhanced order status:', currentOrderId);
+      
+      const { data, error } = await supabase.functions.invoke('paypal-payment', {
+        body: {
+          action: 'order-status',
+          orderId: currentOrderId
+        }
+      });
+
+      if (data?.success && data.order) {
+        console.log('📊 Enhanced order status:', data.order.status);
+        return data.order;
+      }
+    } catch (error) {
+      console.error('❌ Error checking enhanced order status:', error);
+    }
+  };
+
+  if (error) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>❌ {error}</Text>
+        <Text style={styles.noteText}>
+          Please try again or contact support if the problem persists.
+        </Text>
+        {currentOrderId && (
+          <Text style={styles.debugText}>
+            Order ID: {currentOrderId}
+          </Text>
+        )}
+        <Text style={styles.debugText}>
+          Debug: Check console logs for detailed error information
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color="#0070BA" />
-      <Text style={styles.loadingText}>Redirecting to PayPal...</Text>
+      <Text style={styles.loadingText}>
+        {loading ? 'Setting up secure PayPal payment...' : 'Processing payment...'}
+      </Text>
       <Text style={styles.amountText}>
         {currency} {amount.toFixed(2)}
       </Text>
       <Text style={styles.noteText}>
-        You'll be redirected to PayPal to complete your payment.
+        You'll be redirected to PayPal to complete your secure payment.
       </Text>
       <Text style={styles.productionText}>
-        PRODUCTION MODE - Real payment will be processed
+        🔒 Payment will be processed securely in minutes.
       </Text>
+      {currentOrderId && (
+        <Text style={styles.orderIdText}>
+          Order: {currentOrderId.slice(0, 8)}...
+        </Text>
+      )}
     </View>
   );
 }
@@ -165,6 +290,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Inter-SemiBold',
     color: '#0070BA',
+    textAlign: 'center',
   },
   amountText: {
     marginTop: 12,
@@ -178,12 +304,35 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
     textAlign: 'center',
+    lineHeight: 20,
   },
   productionText: {
     marginTop: 24,
     fontSize: 12,
     fontFamily: 'Inter-Bold',
+    color: '#10B981',
+    textAlign: 'center',
+  },
+  orderIdText: {
+    marginTop: 8,
+    fontSize: 10,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
     color: '#EF4444',
     textAlign: 'center',
+    marginBottom: 16,
+  },
+  debugText: {
+    marginTop: 12,
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

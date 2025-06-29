@@ -10,6 +10,7 @@ import CurrencySelector from '@/components/CurrencySelector';
 import { convertToNGN, formatCurrency, isNairaCurrency } from '@/lib/currency';
 import PayPalPayment from '@/components/PayPalPayment';
 import { convertFromNGN } from '@/lib/currency';
+import Constants from 'expo-constants';
 
 
 const quickAmounts = [1000, 2000, 5000, 10000, 20000, 50000];
@@ -67,7 +68,11 @@ export default function FundWalletScreen() {
       setShowPaystack(true);
     } else {
       // Use PayPal for international currencies
-      if (!process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID) {
+      // Check if PayPal Client ID is configured
+      const paypalClientId = Constants.expoConfig?.extra?.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
+      console.log('🔍 PayPal Client ID check:', paypalClientId ? 'SET' : 'NOT SET');
+      
+      if (!paypalClientId) {
         Alert.alert(
           'Payment Not Available',
           'PayPal is not configured. Please contact support.',
@@ -324,9 +329,11 @@ export default function FundWalletScreen() {
               </>
             )}
           </View>
-          <Text style={styles.productionNote}>
-            PRODUCTION MODE - Real payment will be processed
-          </Text>
+          {!isNairaCurrency(selectedCurrency) && process.env.EXPO_PUBLIC_PAYPAL_SANDBOX === 'true' && (
+            <Text style={styles.sandboxNote}>
+              🔧 PayPal Sandbox Mode - No real payment will be processed
+            </Text>
+          )}
         </View>
 
         {/* Fund Button */}
@@ -494,10 +501,10 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 8,
   },
-  productionNote: {
+  sandboxNote: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: '#EF4444',
+    color: '#F59E0B',
     marginTop: 8,
     textAlign: 'center',
   },

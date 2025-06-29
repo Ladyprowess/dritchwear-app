@@ -8,6 +8,7 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 import PaystackPayment from '@/components/PaystackPayment';
 import PayPalPayment from '@/components/PayPalPayment';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import Constants from 'expo-constants';
 
 interface Order {
   id: string;
@@ -368,12 +369,16 @@ export default function CustomerOrdersScreen() {
       setPaymentOrder(customRequest);
       setShowPaystack(true);
     } else {
-      if (!process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID) {
+      const paypalClientId = Constants.expoConfig?.extra?.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
+      console.log('🔍 PayPal Client ID check:', paypalClientId ? 'SET' : 'NOT SET');
+      
+      if (!paypalClientId) {
         Alert.alert(
           'Payment Not Available',
-          'PayPal is not configured. Please use wallet payment or contact support.',
+          'PayPal is not configured. Please contact support.',
           [{ text: 'OK' }]
         );
+        setLoading(false);
         return;
       }
       

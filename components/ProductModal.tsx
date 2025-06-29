@@ -9,6 +9,8 @@ import { calculateOrderTotal } from '@/lib/fees';
 import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
 import PaystackPayment from '@/components/PaystackPayment';
 import PayPalPayment from '@/components/PayPalPayment';
+import Constants from 'expo-constants';
+
 
 interface Product {
   id: string;
@@ -138,7 +140,8 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
 
     // Check if payment gateway is configured
     const hasPaystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    const hasPayPalKey = process.env.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
+    const hasPayPalKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
+
 
     if (isNairaCurrency && !hasPaystackKey) {
       Alert.alert(

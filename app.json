@@ -28,7 +28,8 @@
       "router": {},
       "eas": {
         "projectId": "99a85905-b370-4a58-b525-5de48d3b5568"
-      }
+      },
+      "EXPO_PUBLIC_PAYPAL_CLIENT_ID": "enabled"
     },
     "owner": "ladyprowess",
     "runtimeVersion": {
