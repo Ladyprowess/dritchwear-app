@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe } from 'lucide-react-native';
+import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe, Tag } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
@@ -30,6 +30,8 @@ interface Order {
   created_at: string;
   currency?: string;
   original_amount?: number;
+  promo_code?: string;
+  discount_amount?: number;
   profiles?: {
     full_name: string;
     email: string;
@@ -42,6 +44,7 @@ interface Order {
   quantity?: number;
   budget_range?: string;
   status?: string;
+  invoice_sent?: boolean; // NEW: Track if invoice has been sent
   invoices?: Invoice[];
 }
 
@@ -78,16 +81,6 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
     amount: '',
     description: '',
   });
-  const [canSendInvoice, setCanSendInvoice] = useState(true);
-
-  useEffect(() => {
-    // Check if an invoice can be sent for this order
-    if (order && isAdmin && order.invoices && order.invoices.length > 0) {
-      setCanSendInvoice(false);
-    } else {
-      setCanSendInvoice(true);
-    }
-  }, [order, isAdmin]);
 
   if (!order) return null;
 
@@ -106,8 +99,6 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   };
 
   const actualPaymentCurrency = getActualPaymentCurrency();
-  const customerCurrency = actualPaymentCurrency;
-
 
   // FIXED: Format amounts using the actual payment currency
   const formatAmountInPaymentCurrency = (amount: number) => {
@@ -163,6 +154,19 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
       if (error) throw error;
 
+      // Send notification to customer about status change
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: order.user_id,
+          title: `Order ${newStatus.charAt(0).toUpperCase() + newStatus.slice(1)}`,
+          message: isCustomOrder 
+            ? `Your custom order "${order.title}" has been ${newStatus}`
+            : `Your order #${order.id.toString().substring(0, 8)} has been ${newStatus}`,
+          type: 'order',
+          is_read: false
+        });
+
       Alert.alert('Success', 'Order status updated successfully');
       onOrderUpdate();
       onClose();
@@ -195,7 +199,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
           user_id: order.user_id,
           type: 'credit',
           amount: order.total,
-          description: `Refund for cancelled order #${order.id.slice(0, 8)}`,
+          description: `Refund for cancelled order #${order.id.toString().substring(0, 8)}`,
           reference: order.id,
           status: 'completed'
         });
@@ -222,6 +226,26 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
       return;
     }
 
+    // NEW: Check if invoice has already been sent
+    if (order.invoice_sent) {
+      Alert.alert(
+        'Invoice Already Sent', 
+        'An invoice has already been sent for this custom order. Only one invoice can be sent per order.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // NEW: Check if an invoice already exists (database constraint backup)
+    if (order.invoices && order.invoices.length > 0) {
+      Alert.alert(
+        'Invoice Already Exists', 
+        'An invoice already exists for this custom order.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       const amountInCustomerCurrency = parseFloat(invoiceData.amount);
       // Convert to NGN for storage (our base currency)
@@ -229,7 +253,8 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         amountInCustomerCurrency : 
         convertToNGN(amountInCustomerCurrency, actualPaymentCurrency);
 
-      const { error } = await supabase
+      // NEW: Use a transaction to ensure atomicity
+      const { error: invoiceError } = await supabase
         .from('invoices')
         .insert({
           custom_request_id: order.id,
@@ -241,15 +266,40 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
           status: 'sent'
         });
 
-      if (error) throw error;
+      if (invoiceError) {
+        // Check if it's a unique constraint violation
+        if (invoiceError.code === '23505' && invoiceError.message.includes('unique_invoice_per_custom_request')) {
+          Alert.alert(
+            'Invoice Already Exists',
+            'An invoice has already been sent for this custom order. Only one invoice can be sent per order.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        throw invoiceError;
+      }
 
-      // Update custom request status to quoted
+      // NEW: Update custom request to mark invoice as sent and update status
       const { error: statusError } = await supabase
         .from('custom_requests')
-        .update({ status: 'quoted' })
+        .update({ 
+          status: 'quoted',
+          invoice_sent: true // NEW: Mark invoice as sent
+        })
         .eq('id', order.id);
 
       if (statusError) throw statusError;
+
+      // Send notification to customer
+      await supabase
+        .from('notifications')
+        .insert({
+          user_id: order.user_id,
+          title: 'Invoice Received',
+          message: `You've received an invoice for your custom order "${order.title}". Please review and respond.`,
+          type: 'custom',
+          is_read: false
+        });
 
       Alert.alert('Success', `Invoice sent successfully in ${actualPaymentCurrency}`);
       setShowInvoiceModal(false);
@@ -276,6 +326,15 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
       case 'completed': return '#059669';
       default: return '#6B7280';
     }
+  };
+
+  // NEW: Check if invoice can be sent
+  const canSendInvoice = () => {
+    if (!isAdmin || !isCustomOrder) return false;
+    if (['completed', 'cancelled', 'rejected'].includes(currentStatus || '')) return false;
+    if (order.invoice_sent) return false; // NEW: Check if invoice already sent
+    if (order.invoices && order.invoices.length > 0) return false; // Additional check
+    return true;
   };
 
   return (
@@ -307,7 +366,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   <View style={styles.infoContent}>
                     <Text style={styles.infoLabel}>Order ID</Text>
                     <Text style={styles.infoValue}>
-                      #{order.id.slice(0, 8)}
+                      #{order.id.toString().substring(0, 8)}
                     </Text>
                   </View>
                 </View>
@@ -341,6 +400,35 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                     <Text style={styles.infoValue}>{actualPaymentCurrency}</Text>
                   </View>
                 </View>
+
+                {/* Promo Code (if applied) */}
+                {!isCustomOrder && order.promo_code && (
+                  <View style={styles.infoRow}>
+                    <Tag size={20} color="#10B981" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Promo Code</Text>
+                      <Text style={[styles.infoValue, { color: '#10B981' }]}>
+                        {order.promo_code} ({formatCurrency(order.discount_amount || 0, 'NGN')} discount)
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* NEW: Show invoice status for custom orders */}
+                {isCustomOrder && (
+                  <View style={styles.infoRow}>
+                    <Send size={20} color="#6B7280" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Invoice Status</Text>
+                      <Text style={[
+                        styles.infoValue,
+                        { color: order.invoice_sent ? '#10B981' : '#F59E0B' }
+                      ]}>
+                        {order.invoice_sent ? 'Invoice Sent' : 'No Invoice Sent'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
@@ -435,22 +523,22 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </View>
                 )}
 
-                {/* Send Invoice Button - Only for admins and only if no invoice has been sent yet */}
-                {isAdmin && isCustomOrder && !['completed', 'cancelled', 'rejected'].includes(currentStatus || '') && canSendInvoice && (
+                {/* Send Invoice Button - Only show if invoice can be sent */}
+                {canSendInvoice() && (
                   <Pressable
                     style={styles.sendInvoiceButton}
                     onPress={() => setShowInvoiceModal(true)}
                   >
                     <Send size={20} color="#FFFFFF" />
-                    <Text style={styles.sendInvoiceText}>Send Invoice ({customerCurrency})</Text>
+                    <Text style={styles.sendInvoiceText}>Send Invoice ({actualPaymentCurrency})</Text>
                   </Pressable>
                 )}
-                
-                {/* Message when invoice already sent */}
-                {isAdmin && isCustomOrder && !canSendInvoice && (
-                  <View style={styles.invoiceSentInfo}>
-                    <CheckCircle size={16} color="#10B981" />
-                    <Text style={styles.invoiceSentText}>
+
+                {/* NEW: Show message if invoice already sent */}
+                {isAdmin && isCustomOrder && order.invoice_sent && (
+                  <View style={styles.invoiceAlreadySentCard}>
+                    <CheckCircle size={20} color="#10B981" />
+                    <Text style={styles.invoiceAlreadySentText}>
                       Invoice has already been sent for this order
                     </Text>
                   </View>
@@ -485,6 +573,17 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                       <Text style={styles.summaryLabel}>Subtotal</Text>
                       <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order.subtotal || 0)}</Text>
                     </View>
+                    
+                    {/* Show discount if promo code was applied */}
+                    {order.promo_code && order.discount_amount && order.discount_amount > 0 && (
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Discount ({order.promo_code})</Text>
+                        <Text style={styles.discountValue}>
+                          -{formatAmountInPaymentCurrency(order.discount_amount)}
+                        </Text>
+                      </View>
+                    )}
+                    
                     <View style={styles.summaryRow}>
                       <Text style={styles.summaryLabel}>Service Fee</Text>
                       <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order.service_fee || 0)}</Text>
@@ -539,15 +638,15 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         >
           <View style={styles.modalOverlay}>
             <View style={styles.invoiceModalContent}>
-              <Text style={styles.invoiceModalTitle}>Send Invoice ({customerCurrency})</Text>
+              <Text style={styles.invoiceModalTitle}>Send Invoice ({actualPaymentCurrency})</Text>
               
               <View style={styles.invoiceForm}>
-                <Text style={styles.invoiceFormLabel}>Amount ({customerCurrency})</Text>
+                <Text style={styles.invoiceFormLabel}>Amount ({actualPaymentCurrency})</Text>
                 <TextInput
                   style={styles.invoiceFormInput}
                   value={invoiceData.amount}
                   onChangeText={(text) => setInvoiceData(prev => ({ ...prev, amount: text }))}
-                  placeholder={`Enter amount in ${customerCurrency}`}
+                  placeholder={`Enter amount in ${actualPaymentCurrency}`}
                   keyboardType="numeric"
                 />
 
@@ -562,11 +661,15 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                 />
 
                 <Text style={styles.currencyNote}>
-                  💡 Invoice will be sent in customer's preferred currency: {customerCurrency}
+                  💡 Invoice will be sent in payment currency: {actualPaymentCurrency}
                 </Text>
-                <Text style={styles.invoiceNote}>
-                  ⚠️ Note: Only one invoice can be sent per custom order
-                </Text>
+
+                {/* NEW: Warning about single invoice policy */}
+                <View style={styles.warningCard}>
+                  <Text style={styles.warningText}>
+                    ⚠️ Only one invoice can be sent per custom order. Please ensure all details are correct before sending.
+                  </Text>
+                </View>
               </View>
 
               <View style={styles.invoiceModalActions}>
@@ -794,7 +897,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
   },
-  invoiceSentInfo: {
+  // NEW: Invoice already sent card styles
+  invoiceAlreadySentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#D1FAE5',
@@ -803,9 +907,9 @@ const styles = StyleSheet.create({
     marginTop: 16,
     gap: 8,
   },
-  invoiceSentText: {
+  invoiceAlreadySentText: {
     fontSize: 14,
-    fontFamily: 'Inter-Medium',
+    fontFamily: 'Inter-SemiBold',
     color: '#10B981',
   },
   itemCard: {
@@ -862,6 +966,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
+  },
+  discountValue: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#10B981',
   },
   summaryTotal: {
     borderTopWidth: 1,
@@ -961,12 +1070,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  invoiceNote: {
+  // NEW: Warning card styles
+  warningCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  warningText: {
     fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: '#EF4444',
+    fontFamily: 'Inter-Medium',
+    color: '#92400E',
     textAlign: 'center',
-    marginTop: 8,
   },
   invoiceModalActions: {
     flexDirection: 'row',

@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, ShoppingCart, Plus, Minus, Star, Wallet, CreditCard } from 'lucide-react-native';
+import { X, ShoppingCart, Star, Plus, Minus, Check } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCart } from '@/contexts/CartContext';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
-import { calculateOrderTotal } from '@/lib/fees';
-import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
-import PaystackPayment from '@/components/PaystackPayment';
-import PayPalPayment from '@/components/PayPalPayment';
-import Constants from 'expo-constants';
-
+import { convertFromNGN, formatCurrency } from '@/lib/currency';
 
 interface Product {
   id: string;
@@ -28,630 +23,268 @@ interface ProductModalProps {
   product: Product | null;
   visible: boolean;
   onClose: () => void;
-  onOrderSuccess?: () => void;
+  onOrderSuccess: () => void;
 }
 
 export default function ProductModal({ product, visible, onClose, onOrderSuccess }: ProductModalProps) {
-  const { user, profile, refreshProfile } = useAuth();
+  const { profile } = useAuth();
+  const { addToCart } = useCart();
   const router = useRouter();
-  const [selectedSize, setSelectedSize] = useState('');
-  const [selectedColor, setSelectedColor] = useState('');
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [quantity, setQuantity] = useState(1);
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'card'>('wallet');
-  const [processingOrder, setProcessingOrder] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-
-  // Get user's preferred currency
-  const userCurrency = profile?.preferred_currency || 'NGN';
-  const isNairaCurrency = userCurrency === 'NGN';
-
-  React.useEffect(() => {
-    if (product) {
-      setSelectedSize(product.sizes[0] || 'One Size');
-      setSelectedColor(product.colors[0] || 'Default');
-      setQuantity(1);
-      setPaymentMethod('wallet');
-      setProcessingOrder(false);
-      setShowPaymentModal(false);
-    }
-  }, [product]);
+  const [loading, setLoading] = useState(false);
 
   if (!product) return null;
 
-  // Convert product price to user's preferred currency
-  const getProductPriceInUserCurrency = (priceInNGN: number) => {
-    if (userCurrency === 'NGN') {
-      return priceInNGN;
-    }
-    return convertFromNGN(priceInNGN, userCurrency);
+  const resetModal = () => {
+    setSelectedSizes([]);
+    setSelectedColors([]);
+    setQuantity(1);
   };
 
-  const productPrice = getProductPriceInUserCurrency(product.price);
-
-  const calculateTotal = () => {
-    const subtotal = productPrice * quantity;
-    const location = profile?.location || 'Lagos, Nigeria';
-    
-    // For non-NGN currencies, we might need to adjust the fee calculation
-    if (userCurrency !== 'NGN') {
-      // Convert fees from NGN to user currency
-      const ngnSubtotal = product.price * quantity;
-      const ngnFees = calculateOrderTotal(ngnSubtotal, location);
-      
-      return {
-        subtotal,
-        serviceFee: convertFromNGN(ngnFees.serviceFee, userCurrency),
-        deliveryFee: convertFromNGN(ngnFees.deliveryFee, userCurrency),
-        total: subtotal + convertFromNGN(ngnFees.serviceFee, userCurrency) + convertFromNGN(ngnFees.deliveryFee, userCurrency)
-      };
-    }
-    
-    return calculateOrderTotal(subtotal, location);
+  const handleClose = () => {
+    resetModal();
+    onClose();
   };
 
-  const { subtotal, serviceFee, deliveryFee, total } = calculateTotal();
-
-  // Convert wallet balance to user's preferred currency for display
-  const walletBalanceInUserCurrency = userCurrency === 'NGN' 
-    ? (profile?.wallet_balance || 0)
-    : convertFromNGN(profile?.wallet_balance || 0, userCurrency);
-
-  const handleQuantityChange = (change: number) => {
-    const newQuantity = quantity + change;
-    if (newQuantity >= 1 && newQuantity <= product.stock) {
-      setQuantity(newQuantity);
-    }
+  const toggleSize = (size: string) => {
+    setSelectedSizes(prev => 
+      prev.includes(size) 
+        ? prev.filter(s => s !== size)
+        : [...prev, size]
+    );
   };
 
-  const handleWalletPayment = async () => {
-    if (!user || !profile) {
-      Alert.alert('Authentication Required', 'Please log in to place an order');
+  const toggleColor = (color: string) => {
+    setSelectedColors(prev => 
+      prev.includes(color) 
+        ? prev.filter(c => c !== color)
+        : [...prev, color]
+    );
+  };
+
+  const handleAddToCart = async () => {
+    if (selectedSizes.length === 0 || selectedColors.length === 0) {
+      Alert.alert('Selection Required', 'Please select at least one size and one color');
       return;
     }
 
-    // For wallet payments, always convert to NGN since wallet balance is stored in NGN
-    const totalInNGN = userCurrency === 'NGN' ? total : convertToNGN(total, userCurrency);
+    setLoading(true);
 
-    // Check wallet balance (always in NGN)
-    if ((profile.wallet_balance || 0) < totalInNGN) {
+    try {
+      // Create all combinations of selected sizes and colors
+      const newItems = [];
+      selectedSizes.forEach(size => {
+        selectedColors.forEach(color => {
+          newItems.push({
+            productId: product.id,
+            productName: product.name,
+            productImage: product.image_url,
+            price: product.price,
+            size,
+            color,
+            quantity
+          });
+        });
+      });
+
+      await addToCart(newItems);
+      
+      const totalAdded = selectedSizes.length * selectedColors.length;
       Alert.alert(
-        'Insufficient Balance',
-        `Your wallet balance is ${formatCurrency(walletBalanceInUserCurrency, userCurrency)}. You need ${formatCurrency(total, userCurrency)} to complete this order.`,
+        'Added to Cart', 
+        `Added ${totalAdded} item${totalAdded > 1 ? 's' : ''} to your cart`,
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Fund Wallet', onPress: () => {
-            onClose();
-            router.push('/(customer)/fund-wallet');
+          { text: 'Continue Shopping', onPress: handleClose },
+          { text: 'View Cart', onPress: () => {
+            handleClose();
+            router.push('/cart'); // Fixed path
           }}
         ]
       );
-      return;
-    }
-
-    setProcessingOrder(true);
-    await processOrder('wallet', totalInNGN);
-  };
-
-  const handleCardPayment = () => {
-    if (!user || !profile) {
-      Alert.alert('Authentication Required', 'Please log in to place an order');
-      return;
-    }
-
-    // Check if payment gateway is configured
-    const hasPaystackKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY;
-    const hasPayPalKey = Constants.expoConfig?.extra?.EXPO_PUBLIC_PAYPAL_CLIENT_ID;
-
-
-    if (isNairaCurrency && !hasPaystackKey) {
-      Alert.alert(
-        'Payment Not Available',
-        'Paystack payment is not configured. Please use wallet payment or contact support.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    if (!isNairaCurrency && !hasPayPalKey) {
-      Alert.alert(
-        'Payment Not Available',
-        'PayPal payment is not configured. Please use wallet payment or contact support.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    console.log(`Opening ${isNairaCurrency ? 'Paystack' : 'PayPal'} modal for payment...`);
-    setShowPaymentModal(true);
-  };
-
-  const handlePaymentSuccess = async (response: any) => {
-    console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment successful:`, response);
-    setShowPaymentModal(false);
-    setProcessingOrder(true);
-    
-    // For card payments, use the amount in the user's currency
-    const totalInUserCurrency = total;
-    
-    // But we need to convert to NGN for storage in the database
-    const totalInNGN = userCurrency === 'NGN' ? total : convertToNGN(total, userCurrency);
-    
-    await processOrder('card', totalInNGN, response.reference || response.id, totalInUserCurrency);
-  };
-
-  const handlePaymentCancel = () => {
-    console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment cancelled`);
-    setShowPaymentModal(false);
-    Alert.alert('Payment Cancelled', 'Your payment was cancelled');
-  };
-
-  const processOrder = async (method: 'wallet' | 'card', orderTotalNGN: number, reference?: string, orderTotalUserCurrency?: number) => {
-    try {
-      if (!user || !profile) {
-        throw new Error('User not authenticated');
-      }
-
-      console.log('Processing order with method:', method);
-
-      // Calculate values in NGN for database storage
-      const subtotalNGN = userCurrency === 'NGN' ? subtotal : convertToNGN(subtotal, userCurrency);
-      const serviceFeeNGN = userCurrency === 'NGN' ? serviceFee : convertToNGN(serviceFee, userCurrency);
-      const deliveryFeeNGN = userCurrency === 'NGN' ? deliveryFee : convertToNGN(deliveryFee, userCurrency);
-
-      // Create order - store amounts in NGN for backend, but keep track of original currency
-      const orderData = {
-        user_id: user.id,
-        items: [{
-          product_id: product.id,
-          name: product.name,
-          price: product.price, // Always store original NGN price
-          quantity,
-          size: selectedSize,
-          color: selectedColor,
-        }],
-        subtotal: subtotalNGN,
-        service_fee: serviceFeeNGN,
-        delivery_fee: deliveryFeeNGN,
-        total: orderTotalNGN,
-        payment_method: method === 'wallet' ? 'wallet' : (isNairaCurrency ? 'paystack' : 'paypal'),
-        payment_status: 'paid',
-        order_status: 'pending',
-        delivery_address: profile.location || 'Lagos, Nigeria',
-        currency: userCurrency, // Store the currency used for the order
-        original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null, // Store original amount if not NGN
-        exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null // Store exchange rate if not NGN
-      };
-
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert(orderData)
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Handle wallet operations only for wallet payments
-      if (method === 'wallet') {
-        console.log('Processing wallet payment - deducting from wallet');
-        
-        // Deduct from wallet (always in NGN)
-        const { error: walletError } = await supabase
-          .from('profiles')
-          .update({
-            wallet_balance: (profile.wallet_balance || 0) - orderTotalNGN
-          })
-          .eq('id', user.id);
-
-        if (walletError) throw walletError;
-
-        // Create wallet transaction record
-        const { error: transactionError } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: user.id,
-            type: 'debit',
-            amount: orderTotalNGN,
-            description: `Order payment - ${product.name}`,
-            reference: order.id,
-            status: 'completed',
-            currency: 'NGN', // Wallet transactions are always in NGN
-            original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null,
-            exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null
-          });
-
-        if (transactionError) throw transactionError;
-
-        // Refresh profile to get updated wallet balance
-        await refreshProfile();
-        
-      } else if (method === 'card') {
-        console.log(`Processing ${isNairaCurrency ? 'Paystack' : 'PayPal'} payment - NO wallet deduction`);
-        
-        // For card payments - ONLY create transaction record, DO NOT touch wallet
-        const { error: transactionError } = await supabase
-          .from('transactions')
-          .insert({
-            user_id: user.id,
-            type: 'debit',
-            amount: orderTotalNGN,
-            description: `Order payment via ${isNairaCurrency ? 'Paystack' : 'PayPal'} - ${product.name}`,
-            reference: reference || order.id,
-            status: 'completed',
-            currency: userCurrency,
-            original_amount: userCurrency !== 'NGN' ? orderTotalUserCurrency : null,
-            exchange_rate: userCurrency !== 'NGN' ? (orderTotalNGN / (orderTotalUserCurrency || 1)) : null,
-            payment_provider: isNairaCurrency ? 'paystack' : 'paypal'
-          });
-
-        if (transactionError) throw transactionError;
-        
-        console.log(`${isNairaCurrency ? 'Paystack' : 'PayPal'} payment processed - wallet balance unchanged`);
-      }
-
-      // Update product stock
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({
-          stock: Math.max(0, product.stock - quantity)
-        })
-        .eq('id', product.id);
-
-      if (stockError) throw stockError;
-
-      Alert.alert(
-        'Order Placed Successfully!',
-        `Your order for ${product.name} has been placed successfully!`,
-        [{ 
-          text: 'View Orders', 
-          onPress: () => {
-            onClose();
-            onOrderSuccess?.();
-            router.push('/(customer)/orders');
-          }
-        }]
-      );
-
+      
+      resetModal();
     } catch (error) {
-      console.error('Error placing order:', error);
-      Alert.alert('Error', 'Failed to place order. Please try again.');
+      console.error('Error adding to cart:', error);
+      Alert.alert('Error', 'Failed to add items to cart. Please try again.');
     } finally {
-      setProcessingOrder(false);
+      setLoading(false);
     }
   };
 
-  const handleOrderPress = () => {
-    if (product.stock === 0) {
-      Alert.alert('Out of Stock', 'This product is currently out of stock');
-      return;
+  // Get user's preferred currency
+  const userCurrency = profile?.preferred_currency || 'NGN';
+  
+  // Convert product price to user's currency for display
+  const getProductPriceInUserCurrency = () => {
+    if (userCurrency === 'NGN') {
+      return product.price;
     }
-
-    if (processingOrder) return;
-    
-    if (paymentMethod === 'wallet') {
-      handleWalletPayment();
-    } else {
-      handleCardPayment();
-    }
+    return convertFromNGN(product.price, userCurrency);
   };
 
-  const isOutOfStock = product.stock === 0;
-  const isOrderDisabled = isOutOfStock || processingOrder;
-  const hasInsufficientBalance = paymentMethod === 'wallet' && walletBalanceInUserCurrency < total;
-
-  const getOrderButtonText = () => {
-    if (processingOrder) return 'Processing...';
-    if (isOutOfStock) return 'Out of Stock';
-    if (paymentMethod === 'wallet') {
-      if (hasInsufficientBalance) {
-        return 'Insufficient Balance';
-      }
-      return `Pay ${formatCurrency(total, userCurrency)} from Wallet`;
-    }
-    return `Pay ${formatCurrency(total, userCurrency)} with ${isNairaCurrency ? 'Card' : 'PayPal'}`;
-  };
-
-  const getPaymentMethodTitle = () => {
-    if (isNairaCurrency) {
-      return 'Card/Bank Transfer';
-    }
-    return 'PayPal';
-  };
-
-  const getPaymentMethodSubtitle = () => {
-    if (isNairaCurrency) {
-      return 'Pay securely with Paystack';
-    }
-    return 'Pay securely with PayPal';
-  };
+  const productPriceInUserCurrency = getProductPriceInUserCurrency();
 
   return (
-    <>
-      <Modal
-        visible={visible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={onClose}
-      >
-        <SafeAreaView style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Product Details</Text>
-            <Pressable style={styles.closeButton} onPress={onClose}>
-              <X size={24} color="#1F2937" />
-            </Pressable>
-          </View>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+    >
+      <SafeAreaView style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Product Details</Text>
+          <Pressable style={styles.closeButton} onPress={handleClose}>
+            <X size={24} color="#1F2937" />
+          </Pressable>
+        </View>
 
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-            {/* Product Image */}
-            <Image
-              source={{ uri: product.image_url }}
-              style={styles.productImage}
-              resizeMode="cover"
-            />
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          {/* Product Image */}
+          <Image
+            source={{ uri: product.image_url }}
+            style={styles.productImage}
+            resizeMode="cover"
+          />
 
-            {/* Product Info */}
-            <View style={styles.productInfo}>
-              <View style={styles.productHeader}>
-                <Text style={styles.productName}>{product.name}</Text>
-                <Text style={styles.productPrice}>{formatCurrency(productPrice, userCurrency)}</Text>
-              </View>
-
-              <View style={styles.ratingContainer}>
-                <Star size={16} color="#F59E0B" fill="#F59E0B" />
-                <Text style={styles.ratingText}>4.8 (124 reviews)</Text>
-              </View>
-
-              <Text style={styles.productDescription}>{product.description}</Text>
-
-              <View style={styles.stockInfo}>
-                <Text style={[
-                  styles.stockText,
-                  { color: isOutOfStock ? '#EF4444' : '#10B981' }
-                ]}>
-                  {isOutOfStock ? 'Out of stock' : `${product.stock} in stock`}
-                </Text>
-                <Text style={styles.categoryText}>{product.category}</Text>
-              </View>
-            </View>
-
-            {/* Size Selection */}
-            {product.sizes.length > 1 && (
-              <View style={styles.selectionSection}>
-                <Text style={styles.selectionTitle}>Size</Text>
-                <View style={styles.optionsContainer}>
-                  {product.sizes.map((size) => (
-                    <Pressable
-                      key={size}
-                      style={[
-                        styles.optionChip,
-                        selectedSize === size && styles.optionChipActive
-                      ]}
-                      onPress={() => setSelectedSize(size)}
-                    >
-                      <Text
-                        style={[
-                          styles.optionText,
-                          selectedSize === size && styles.optionTextActive
-                        ]}
-                      >
-                        {size}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Color Selection */}
-            {product.colors.length > 1 && (
-              <View style={styles.selectionSection}>
-                <Text style={styles.selectionTitle}>Color</Text>
-                <View style={styles.optionsContainer}>
-                  {product.colors.map((color) => (
-                    <Pressable
-                      key={color}
-                      style={[
-                        styles.optionChip,
-                        selectedColor === color && styles.optionChipActive
-                      ]}
-                      onPress={() => setSelectedColor(color)}
-                    >
-                      <Text
-                        style={[
-                          styles.optionText,
-                          selectedColor === color && styles.optionTextActive
-                        ]}
-                      >
-                        {color}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* Quantity Selection */}
-            <View style={styles.selectionSection}>
-              <Text style={styles.selectionTitle}>Quantity</Text>
-              <View style={styles.quantityContainer}>
-                <Pressable
-                  style={[styles.quantityButton, quantity <= 1 && styles.quantityButtonDisabled]}
-                  onPress={() => handleQuantityChange(-1)}
-                  disabled={quantity <= 1}
-                >
-                  <Minus size={16} color={quantity <= 1 ? "#9CA3AF" : "#1F2937"} />
-                </Pressable>
-                <Text style={styles.quantityText}>{quantity}</Text>
-                <Pressable
-                  style={[styles.quantityButton, quantity >= product.stock && styles.quantityButtonDisabled]}
-                  onPress={() => handleQuantityChange(1)}
-                  disabled={quantity >= product.stock}
-                >
-                  <Plus size={16} color={quantity >= product.stock ? "#9CA3AF" : "#1F2937"} />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Order Summary */}
-            <View style={styles.summarySection}>
-              <Text style={styles.selectionTitle}>Order Summary</Text>
-              <View style={styles.summaryCard}>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Subtotal ({quantity} item{quantity !== 1 ? 's' : ''})</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(subtotal, userCurrency)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Service Fee (2%)</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(serviceFee, userCurrency)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Delivery Fee</Text>
-                  <Text style={styles.summaryValue}>{formatCurrency(deliveryFee, userCurrency)}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Currency</Text>
-                  <Text style={styles.summaryValue}>{userCurrency}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>Delivery to</Text>
-                  <Text style={styles.summaryValue}>{profile?.location || 'Lagos, Nigeria'}</Text>
-                </View>
-                <View style={[styles.summaryRow, styles.summaryTotal]}>
-                  <Text style={styles.summaryTotalLabel}>Total</Text>
-                  <Text style={styles.summaryTotalValue}>{formatCurrency(total, userCurrency)}</Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Payment Method Selection */}
-            <View style={styles.selectionSection}>
-              <Text style={styles.selectionTitle}>Payment Method</Text>
-              <View style={styles.paymentMethods}>
-                <Pressable
-                  style={[
-                    styles.paymentMethod,
-                    paymentMethod === 'wallet' && styles.paymentMethodActive
-                  ]}
-                  onPress={() => setPaymentMethod('wallet')}
-                >
-                  <Wallet size={20} color={paymentMethod === 'wallet' ? '#7C3AED' : '#6B7280'} />
-                  <View style={styles.paymentMethodInfo}>
-                    <Text style={[
-                      styles.paymentMethodTitle,
-                      paymentMethod === 'wallet' && styles.paymentMethodTitleActive
-                    ]}>
-                      Wallet
-                    </Text>
-                    <Text style={[
-                      styles.paymentMethodBalance,
-                      hasInsufficientBalance && { color: '#EF4444' }
-                    ]}>
-                      Balance: {formatCurrency(walletBalanceInUserCurrency, userCurrency)}
-                      {hasInsufficientBalance && ' (Insufficient)'}
-                    </Text>
-                  </View>
-                  {hasInsufficientBalance && (
-                    <Pressable
-                      style={styles.fundWalletButton}
-                      onPress={() => {
-                        onClose();
-                        router.push('/(customer)/fund-wallet');
-                      }}
-                    >
-                      <Text style={styles.fundWalletText}>Fund</Text>
-                    </Pressable>
-                  )}
-                </Pressable>
-
-                <Pressable
-                  style={[
-                    styles.paymentMethod,
-                    paymentMethod === 'card' && styles.paymentMethodActive
-                  ]}
-                  onPress={() => setPaymentMethod('card')}
-                >
-                  <CreditCard size={20} color={paymentMethod === 'card' ? '#7C3AED' : '#6B7280'} />
-                  <View style={styles.paymentMethodInfo}>
-                    <Text style={[
-                      styles.paymentMethodTitle,
-                      paymentMethod === 'card' && styles.paymentMethodTitleActive
-                    ]}>
-                      {getPaymentMethodTitle()}
-                    </Text>
-                    <Text style={styles.paymentMethodBalance}>
-                      {getPaymentMethodSubtitle()}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
-            </View>
-          </ScrollView>
-
-          {/* Order Button */}
-          <View style={styles.orderContainer}>
-            <Pressable
-              style={[
-                styles.orderButton, 
-                (isOrderDisabled || (paymentMethod === 'wallet' && hasInsufficientBalance)) && styles.orderButtonDisabled
-              ]}
-              onPress={handleOrderPress}
-              disabled={isOrderDisabled || (paymentMethod === 'wallet' && hasInsufficientBalance)}
-            >
-              <ShoppingCart size={20} color="#FFFFFF" />
-              <Text style={styles.orderButtonText}>
-                {getOrderButtonText()}
-              </Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
-      </Modal>
-
-      {/* Payment Modal */}
-      <Modal
-        visible={showPaymentModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handlePaymentCancel}
-      >
-        <SafeAreaView style={styles.paystackModalContainer}>
-          <View style={styles.paystackModalHeader}>
-            <Text style={styles.paystackModalTitle}>
-              Complete Payment - {formatCurrency(total, userCurrency)}
+          {/* Product Info */}
+          <View style={styles.productInfo}>
+            <Text style={styles.productName}>{product.name}</Text>
+            <Text style={styles.productPrice}>
+              {formatCurrency(productPriceInUserCurrency, userCurrency)}
             </Text>
-            <Pressable style={styles.closeButton} onPress={handlePaymentCancel}>
-              <X size={24} color="#1F2937" />
-            </Pressable>
+            
+            <View style={styles.ratingContainer}>
+              <Star size={16} color="#F59E0B" fill="#F59E0B" />
+              <Text style={styles.ratingText}>4.8 (124 reviews)</Text>
+            </View>
+
+            <Text style={styles.productDescription}>{product.description}</Text>
+            <Text style={styles.stockText}>
+              {product.stock > 0 ? `${product.stock} items in stock` : 'Out of stock'}
+            </Text>
           </View>
-          
-          {showPaymentModal && user && profile && (
-            <>
-              {isNairaCurrency ? (
-                // Paystack for NGN
-                <PaystackPayment
-                  email={user.email || profile.email}
-                  amount={total}
-                  publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
-                  customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
-                  onSuccess={handlePaymentSuccess}
-                  onCancel={handlePaymentCancel}
-                />
-              ) : (
-                // PayPal for other currencies
-                <PayPalPayment
-                  email={user.email || profile.email}
-                  amount={total}
-                  currency={userCurrency}
-                  customerName={profile.full_name || user.user_metadata?.full_name || 'Customer'}
-                  description={`Payment for ${product.name}`}
-                  onSuccess={handlePaymentSuccess}
-                  onCancel={handlePaymentCancel}
-                />
-              )}
-            </>
+
+          {/* Size Selection */}
+          <View style={styles.selectionSection}>
+            <Text style={styles.selectionTitle}>
+              Select Sizes ({selectedSizes.length} selected)
+            </Text>
+            <View style={styles.optionsGrid}>
+              {product.sizes.map((size) => (
+                <Pressable
+                  key={size}
+                  style={[
+                    styles.optionButton,
+                    selectedSizes.includes(size) && styles.optionButtonActive
+                  ]}
+                  onPress={() => toggleSize(size)}
+                >
+                  {selectedSizes.includes(size) && (
+                    <Check size={16} color="#FFFFFF" style={styles.checkIcon} />
+                  )}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      selectedSizes.includes(size) && styles.optionTextActive
+                    ]}
+                  >
+                    {size}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* Color Selection */}
+          <View style={styles.selectionSection}>
+            <Text style={styles.selectionTitle}>
+              Select Colors ({selectedColors.length} selected)
+            </Text>
+            <View style={styles.optionsGrid}>
+              {product.colors.map((color) => (
+                <Pressable
+                  key={color}
+                  style={[
+                    styles.optionButton,
+                    selectedColors.includes(color) && styles.optionButtonActive
+                  ]}
+                  onPress={() => toggleColor(color)}
+                >
+                  {selectedColors.includes(color) && (
+                    <Check size={16} color="#FFFFFF" style={styles.checkIcon} />
+                  )}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      selectedColors.includes(color) && styles.optionTextActive
+                    ]}
+                  >
+                    {color}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* Quantity Selection */}
+          <View style={styles.selectionSection}>
+            <Text style={styles.selectionTitle}>Quantity</Text>
+            <View style={styles.quantityContainer}>
+              <Pressable
+                style={styles.quantityButton}
+                onPress={() => setQuantity(Math.max(1, quantity - 1))}
+              >
+                <Minus size={20} color="#7C3AED" />
+              </Pressable>
+              <Text style={styles.quantityText}>{quantity}</Text>
+              <Pressable
+                style={styles.quantityButton}
+                onPress={() => setQuantity(quantity + 1)}
+              >
+                <Plus size={20} color="#7C3AED" />
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Selection Summary */}
+          {(selectedSizes.length > 0 || selectedColors.length > 0) && (
+            <View style={styles.summarySection}>
+              <Text style={styles.summaryTitle}>Selection Summary</Text>
+              <Text style={styles.summaryText}>
+                {selectedSizes.length * selectedColors.length} combinations will be added to cart
+              </Text>
+              <Text style={styles.summaryPrice}>
+                Total: {formatCurrency(
+                  productPriceInUserCurrency * quantity * selectedSizes.length * selectedColors.length, 
+                  userCurrency
+                )}
+              </Text>
+            </View>
           )}
-        </SafeAreaView>
-      </Modal>
-    </>
+        </ScrollView>
+
+        {/* Add to Cart Button */}
+        <View style={styles.bottomSection}>
+          <Pressable
+            style={[
+              styles.addToCartButton,
+              (selectedSizes.length === 0 || selectedColors.length === 0 || loading) && styles.addToCartButtonDisabled
+            ]}
+            onPress={handleAddToCart}
+            disabled={selectedSizes.length === 0 || selectedColors.length === 0 || loading}
+          >
+            <ShoppingCart size={20} color="#FFFFFF" />
+            <Text style={styles.addToCartText}>
+              {loading ? 'Adding...' : `Add to Cart (${selectedSizes.length * selectedColors.length} items)`}
+            </Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>
   );
 }
 
@@ -692,29 +325,23 @@ const styles = StyleSheet.create({
   productInfo: {
     padding: 20,
   },
-  productHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
   productName: {
-    flex: 1,
     fontSize: 24,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    marginRight: 16,
+    marginBottom: 8,
   },
   productPrice: {
-    fontSize: 24,
+    fontSize: 20,
     fontFamily: 'Inter-Bold',
     color: '#7C3AED',
+    marginBottom: 8,
   },
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-    gap: 6,
+    marginBottom: 12,
+    gap: 4,
   },
   ratingText: {
     fontSize: 14,
@@ -726,25 +353,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
     lineHeight: 24,
-    marginBottom: 16,
-  },
-  stockInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 12,
   },
   stockText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-  },
-  categoryText: {
-    fontSize: 14,
-    fontFamily: 'Inter-Medium',
-    color: '#9CA3AF',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    color: '#10B981',
   },
   selectionSection: {
     paddingHorizontal: 20,
@@ -756,27 +370,35 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 12,
   },
-  optionsContainer: {
+  optionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 12,
   },
-  optionChip: {
+  optionButton: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    paddingVertical: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    backgroundColor: '#FFFFFF',
+    minWidth: 80,
+    alignItems: 'center',
+    position: 'relative',
   },
-  optionChipActive: {
+  optionButtonActive: {
     backgroundColor: '#7C3AED',
     borderColor: '#7C3AED',
+  },
+  checkIcon: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
   },
   optionText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    color: '#1F2937',
   },
   optionTextActive: {
     color: '#FFFFFF',
@@ -790,116 +412,49 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#7C3AED',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  quantityButtonDisabled: {
-    opacity: 0.5,
   },
   quantityText: {
     fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
+    fontFamily: 'Inter-Bold',
     color: '#1F2937',
     minWidth: 40,
     textAlign: 'center',
   },
   summarySection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  summaryCard: {
-    backgroundColor: '#F9FAFB',
+    marginHorizontal: 20,
+    backgroundColor: '#F3F4F6',
     borderRadius: 12,
     padding: 16,
+    marginBottom: 20,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  summaryTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
     marginBottom: 8,
   },
-  summaryLabel: {
+  summaryText: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
+    marginBottom: 4,
   },
-  summaryValue: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
-  },
-  summaryTotal: {
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingTop: 8,
-    marginTop: 8,
-    marginBottom: 0,
-  },
-  summaryTotalLabel: {
-    fontSize: 16,
-    fontFamily: 'Inter-Bold',
-    color: '#1F2937',
-  },
-  summaryTotalValue: {
+  summaryPrice: {
     fontSize: 16,
     fontFamily: 'Inter-Bold',
     color: '#7C3AED',
   },
-  paymentMethods: {
-    gap: 12,
-  },
-  paymentMethod: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  paymentMethodActive: {
-    borderColor: '#7C3AED',
-    backgroundColor: '#FEFBFF',
-  },
-  paymentMethodInfo: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  paymentMethodTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
-    marginBottom: 2,
-  },
-  paymentMethodTitleActive: {
-    color: '#7C3AED',
-  },
-  paymentMethodBalance: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-  },
-  fundWalletButton: {
-    backgroundColor: '#7C3AED',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  fundWalletText: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
-  },
-  orderContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  bottomSection: {
+    padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
-  orderButton: {
+  addToCartButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -908,59 +463,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 8,
   },
-  orderButtonDisabled: {
-    opacity: 0.6,
+  addToCartButtonDisabled: {
+    opacity: 0.5,
   },
-  orderButtonText: {
-    fontSize: 16,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
-  },
-  paystackModalContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  paystackModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  paystackModalTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-    color: '#1F2937',
-  },
-  paypalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  paypalText: {
-    fontSize: 18,
-    fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  paypalSubtext: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  switchCurrencyButton: {
-    backgroundColor: '#0070BA',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  switchCurrencyText: {
+  addToCartText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',

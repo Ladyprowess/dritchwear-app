@@ -1,3 +1,5 @@
+// Delivery fees and service fee calculation utilities
+
 export const SERVICE_FEE_PERCENTAGE = 0.02; // 2%
 
 export const DELIVERY_FEES = {
@@ -88,10 +90,10 @@ export function calculateOrderTotal(
   total: number;
   currency: string;
 } {
-  const discountedSubtotal = subtotal - discountAmount;
-  const serviceFee = calculateServiceFee(discountedSubtotal);
+  // Note: subtotal should already have discount applied if there is one
+  const serviceFee = calculateServiceFee(subtotal);
   const deliveryFee = calculateDeliveryFee(location, currency);
-  const total = discountedSubtotal + serviceFee + deliveryFee;
+  const total = subtotal + serviceFee + deliveryFee;
 
   return {
     subtotal,
@@ -101,4 +103,54 @@ export function calculateOrderTotal(
     total: Math.round(total * 100) / 100, // Round to 2 decimal places
     currency,
   };
+}
+
+// Promo code validation and application
+export interface PromoCode {
+  code: string;
+  description: string;
+  discount: number;
+  isActive: boolean;
+  maxUses?: number;
+  currentUses?: number;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+// Hardcoded promo codes for client-side validation
+export const PROMO_CODES: Record<string, PromoCode> = {
+  'WELCOME10': { code: 'WELCOME10', description: '10% off your order', discount: 0.10, isActive: true },
+  'SAVE20': { code: 'SAVE20', description: '20% off your order', discount: 0.20, isActive: true },
+  'FIRST15': { code: 'FIRST15', description: '15% off for first-time customers', discount: 0.15, isActive: true },
+  'STUDENT': { code: 'STUDENT', description: '12% student discount', discount: 0.12, isActive: true },
+  'HOLIDAY25': { code: 'HOLIDAY25', description: '25% holiday special', discount: 0.25, isActive: true },
+};
+
+export function validatePromoCode(code: string): PromoCode | null {
+  const promoCode = PROMO_CODES[code];
+  if (!promoCode || !promoCode.isActive) {
+    return null;
+  }
+  
+  // Check date validity if applicable
+  const now = new Date();
+  if (promoCode.startDate && now < promoCode.startDate) {
+    return null;
+  }
+  if (promoCode.endDate && now > promoCode.endDate) {
+    return null;
+  }
+  
+  // Check usage limits if applicable
+  if (promoCode.maxUses !== undefined && 
+      promoCode.currentUses !== undefined && 
+      promoCode.currentUses >= promoCode.maxUses) {
+    return null;
+  }
+  
+  return promoCode;
+}
+
+export function calculateDiscount(subtotal: number, promoCode: PromoCode): number {
+  return subtotal * promoCode.discount;
 }

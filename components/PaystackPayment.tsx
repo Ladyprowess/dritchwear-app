@@ -22,13 +22,17 @@ export default function PaystackPayment({
   // Convert amount to kobo (Paystack uses kobo)
   const amountInKobo = amount * 100;
 
+  // Check if we're using production or test key
+  const isProduction = publicKey.startsWith('pk_live_');
+  const environment = isProduction ? 'PRODUCTION' : 'TEST';
+
   const paystackHTML = `
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-        <title>Paystack Payment</title>
+        <title>Paystack Payment - ${environment}</title>
         <script src="https://js.paystack.co/v1/inline.js"></script>
         <style>
             * {
@@ -39,7 +43,7 @@ export default function PaystackPayment({
             
             body {
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                background: #f8f9fa;
+                background: ${isProduction ? '#f8f9fa' : '#fff3cd'};
                 display: flex;
                 justify-content: center;
                 align-items: center;
@@ -58,6 +62,19 @@ export default function PaystackPayment({
                 text-align: center;
                 max-width: 400px;
                 width: 100%;
+                ${!isProduction ? 'border: 2px solid #ffc107;' : ''}
+            }
+
+            .environment-badge {
+                display: ${isProduction ? 'none' : 'block'};
+                background: #ffc107;
+                color: #856404;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                text-transform: uppercase;
             }
             
             .amount {
@@ -74,7 +91,7 @@ export default function PaystackPayment({
             }
             
             .pay-button {
-                background: #7C3AED;
+                background: ${isProduction ? '#7C3AED' : '#28a745'};
                 color: white;
                 border: none;
                 padding: 16px 32px;
@@ -90,7 +107,7 @@ export default function PaystackPayment({
             }
             
             .pay-button:hover {
-                background: #6D28D9;
+                background: ${isProduction ? '#6D28D9' : '#218838'};
             }
             
             .pay-button:disabled {
@@ -140,20 +157,33 @@ export default function PaystackPayment({
             .error.show {
                 display: block;
             }
+
+            .security-info {
+                margin-top: 20px;
+                padding: 12px;
+                background: ${isProduction ? '#EBF8FF' : '#FFF3CD'};
+                border-radius: 8px;
+                font-size: 12px;
+                color: ${isProduction ? '#2563EB' : '#856404'};
+            }
         </style>
     </head>
     <body>
         <div class="container">
+            <div class="environment-badge">${environment} MODE</div>
             <div class="amount">₦${amount.toLocaleString()}</div>
             <div class="email">${email}</div>
             <button class="pay-button" onclick="payWithPaystack()" id="payButton">
-                Pay with Paystack
+                ${isProduction ? 'Pay with Paystack' : 'Pay with Paystack (TEST)'}
             </button>
             <button class="cancel-button" onclick="cancelPayment()">
                 Cancel
             </button>
             <div class="loading" id="loading">Processing payment...</div>
             <div class="error" id="error"></div>
+            <div class="security-info">
+                🔒 ${isProduction ? 'Secure payment processing' : 'Test mode - No real charges will be made'}
+            </div>
         </div>
 
         <script>
@@ -171,7 +201,7 @@ export default function PaystackPayment({
             function hideLoading() {
                 document.getElementById('loading').classList.remove('show');
                 document.getElementById('payButton').disabled = false;
-                document.getElementById('payButton').textContent = 'Pay with Paystack';
+                document.getElementById('payButton').textContent = '${isProduction ? 'Pay with Paystack' : 'Pay with Paystack (TEST)'}';
             }
 
             function showError(message) {
@@ -232,6 +262,11 @@ export default function PaystackPayment({
                                     display_name: "Customer Name",
                                     variable_name: "customer_name",
                                     value: "${customerName}"
+                                },
+                                {
+                                    display_name: "Environment",
+                                    variable_name: "environment",
+                                    value: "${environment}"
                                 }
                             ]
                         },
@@ -295,6 +330,8 @@ export default function PaystackPayment({
             // Wait for page to fully load before enabling payment
             window.addEventListener('load', function() {
                 console.log('Page loaded, Paystack available:', typeof PaystackPop !== 'undefined');
+                console.log('Environment: ${environment}');
+                console.log('Public Key: ${publicKey.substring(0, 10)}...');
                 
                 // Auto-trigger payment after a short delay for better UX
                 setTimeout(() => {

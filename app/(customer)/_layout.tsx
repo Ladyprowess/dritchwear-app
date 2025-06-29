@@ -1,7 +1,27 @@
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Tabs } from 'expo-router';
-import { Home, ShoppingBag, User, Bell, Search } from 'lucide-react-native';
+import { Home, ShoppingBag, User, Bell, Search, ShoppingCart } from 'lucide-react-native';
+import { useCart } from '@/contexts/CartContext';
+import { View, Text, StyleSheet } from 'react-native';
+
+function CartTabIcon({ size, color }: { size: number; color: string }) {
+  const { getTotalItems } = useCart();
+  const itemCount = getTotalItems();
+
+  return (
+    <View style={styles.cartIconContainer}>
+      <ShoppingCart size={size} color={color} />
+      {itemCount > 0 && (
+        <View style={styles.cartBadge}>
+          <Text style={styles.cartBadgeText}>
+            {itemCount > 99 ? '99+' : itemCount.toString()}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
 
 export default function CustomerLayout() {
   const { user, profile, loading } = useAuth();
@@ -53,6 +73,15 @@ export default function CustomerLayout() {
           title: 'Shop',
           tabBarIcon: ({ size, color }) => (
             <Search size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="cart"
+        options={{
+          title: 'Cart',
+          tabBarIcon: ({ size, color }) => (
+            <CartTabIcon size={size} color={color} />
           ),
         }}
       />
@@ -109,6 +138,35 @@ export default function CustomerLayout() {
           href: null, // This hides the screen from tabs
         }}
       />
+      <Tabs.Screen
+        name="checkout"
+        options={{
+          href: null, // This hides the screen from tabs
+        }}
+      />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  cartIconContainer: {
+    position: 'relative',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  cartBadgeText: {
+    fontSize: 10,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
+  },
+});
