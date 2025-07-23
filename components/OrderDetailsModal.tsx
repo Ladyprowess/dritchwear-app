@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe, Tag, Building, Palette, Target, FileText } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system';
+
 
 interface OrderItem {
   product_id: string;
@@ -86,6 +89,29 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   const { isAdmin, profile } = useAuth();
   const [updating, setUpdating] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+
+  const downloadImage = async (imageUrl: string) => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission denied', 'You need to allow access to save images.');
+      return;
+    }
+  
+    try {
+      const fileName = imageUrl.split('/').pop();
+      const fileUri = FileSystem.documentDirectory + fileName;
+  
+      const downloaded = await FileSystem.downloadAsync(imageUrl, fileUri);
+      const asset = await MediaLibrary.createAssetAsync(downloaded.uri);
+      await MediaLibrary.createAlbumAsync('Downloads', asset, false);
+  
+      Alert.alert('Download complete', 'The logo has been saved to your Downloads.');
+    } catch (error) {
+      console.error('Download failed:', error);
+      Alert.alert('Download failed', 'Could not save the image.');
+    }
+  };
+  
   const [invoiceData, setInvoiceData] = useState({
     amount: '',
     description: '',
@@ -95,6 +121,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
   const isCustomOrder = !order.items;
   const currentStatus = isCustomOrder ? order.status : order.order_status;
+  
 
   // FIXED: Determine the actual payment currency used
   const getActualPaymentCurrency = () => {
@@ -522,25 +549,25 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                         </View>
                       )}
                       
-                      {order.event_name && (
-                        <View style={styles.detailRow}>
-                          <Calendar size={16} color="#6B7280" />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Event Name</Text>
-                            <Text style={styles.detailValue}>{order.event_name}</Text>
-                          </View>
-                        </View>
-                      )}
-                      
                       {order.logo_url && (
-                        <View style={styles.detailRow}>
-                          <FileText size={16} color="#6B7280" />
-                          <View style={styles.detailContent}>
-                            <Text style={styles.detailLabel}>Logo</Text>
-                            <Text style={styles.detailValue}>Logo uploaded</Text>
-                          </View>
-                        </View>
-                      )}
+  <View style={styles.detailRow}>
+    <FileText size={16} color="#6B7280" />
+    <View style={styles.detailContent}>
+      <Text style={styles.detailLabel}>Logo</Text>
+      <Image 
+        source={{ uri: order.logo_url }}
+        style={{ width: 80, height: 80, borderRadius: 8, marginTop: 6, backgroundColor: '#F3F4F6' }}
+        resizeMode="contain"
+      />
+      <Pressable onPress={() => downloadImage(order.logo_url)} style={{ marginTop: 6 }}>
+        <Text style={{ color: '#7C3AED', fontSize: 13, fontWeight: '600' }}>
+          Download Logo
+        </Text>
+      </Pressable>
+    </View>
+  </View>
+)}
+
                       
                       {order.brand_colors && order.brand_colors.length > 0 && (
                         <View style={styles.detailRow}>

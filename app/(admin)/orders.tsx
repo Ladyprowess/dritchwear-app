@@ -80,20 +80,21 @@ export default function AdminOrdersScreen() {
 
       // Fetch custom requests with invoices
       const { data: customData } = await supabase
-        .from('custom_requests')
-        .select(`
-          id,
-          user_id,
-          title,
-          description,
-          quantity,
-          budget_range,
-          status,
-          created_at,
-          currency,
-          profiles!inner(full_name, email, wallet_balance, preferred_currency),
-          invoices(*)
-        `)
+  .from('custom_requests')
+  .select(`
+    id,
+    user_id,
+    title,
+    description,
+    quantity,
+    budget_range,
+    status,
+    created_at,
+    currency,
+    logo_url,
+    profiles!inner(full_name, email, wallet_balance, preferred_currency),
+    invoices(*)
+  `)
         .order('created_at', { ascending: false });
 
       if (ordersData) setOrders(ordersData);
