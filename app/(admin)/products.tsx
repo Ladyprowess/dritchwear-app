@@ -74,17 +74,46 @@ export default function AdminProductsScreen() {
   });
 
   const fetchProducts = async () => {
-    const { data } = await supabase
+    setLoading(true);
+  
+    // 1. Fetch all products
+    const { data: rawProducts, error: productError } = await supabase
       .from('products')
       .select('*')
       .order('created_at', { ascending: false });
-    
-    if (data) {
-      setProducts(data);
-      setFilteredProducts(data);
+  
+    if (productError) {
+      console.error('Error loading products:', productError.message);
+      setLoading(false);
+      return;
     }
+  
+    // 2. Fetch primary images
+    const { data: images, error: imageError } = await supabase
+      .from('product_images')
+      .select('product_id, image_url')
+      .eq('is_primary', true);
+  
+    if (imageError) {
+      console.error('Error loading images:', imageError.message);
+      setLoading(false);
+      return;
+    }
+  
+    // 3. Attach the primary image to each product
+    const productsWithImages = rawProducts.map((product) => {
+      const primaryImage = images.find((img) => img.product_id === product.id);
+      return {
+        ...product,
+        image_url: primaryImage?.image_url || product.image_url,
+      };
+    });
+  
+    setProducts(productsWithImages);
+    setFilteredProducts(productsWithImages);
     setLoading(false);
   };
+  
 
   useEffect(() => {
     fetchProducts();
