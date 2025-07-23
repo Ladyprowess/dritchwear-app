@@ -1,7 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, Alert, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { X, Package, Tag, Eye, EyeOff, Calendar } from 'lucide-react-native';
+import { X, Plus, Trash2, Save, Image as ImageIcon, Star, ArrowUp, ArrowDown } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import { Image } from 'react-native';
+
 
 interface Product {
   id: string;
@@ -14,8 +18,14 @@ interface Product {
   colors: string[];
   stock: number;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
+}
+
+interface ProductImage {
+  id: string;
+  image_url: string;
+  alt_text: string | null;
+  display_order: number;
+  is_primary: boolean;
 }
 
 interface ProductDetailsModalProps {
@@ -25,166 +35,376 @@ interface ProductDetailsModalProps {
 }
 
 export default function ProductDetailsModal({ product, visible, onClose }: ProductDetailsModalProps) {
+  const { isAdmin } = useAuth();
+  const [productImages, setProductImages] = useState<ProductImage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [newImageUrl, setNewImageUrl] = useState('');
+  const [newImageAlt, setNewImageAlt] = useState('');
+
+  useEffect(() => {
+    if (visible && product) {
+      fetchProductImages();
+    }
+  }, [visible, product]);
+
+  const fetchProductImages = async () => {
+    if (!product) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('product_images')
+        .select('*')
+        .eq('product_id', product.id)
+        .order('display_order', { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setProductImages(data);
+      } else {
+        // Fallback to main product image
+        setProductImages([{
+          id: 'main',
+          image_url: product.image_url,
+          alt_text: product.name,
+          display_order: 0,
+          is_primary: true
+        }]);
+      }
+    } catch (error) {
+      console.error('Error fetching product images:', error);
+    }
+  };
+
+  const handleAddImage = async () => {
+    if (!newImageUrl.trim() || !product) {
+      Alert.alert('Error', 'Please enter a valid image URL');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const nextOrder = Math.max(...productImages.map(img => img.display_order), -1) + 1;
+      
+      const { error } = await supabase
+        .from('product_images')
+        .insert({
+          product_id: product.id,
+          image_url: newImageUrl.trim(),
+          alt_text: newImageAlt.trim() || null,
+          display_order: nextOrder,
+          is_primary: productImages.length === 0
+        });
+
+      if (error) throw error;
+
+      setNewImageUrl('');
+      setNewImageAlt('');
+      setShowImageModal(false);
+      await fetchProductImages();
+      Alert.alert('Success', 'Image added successfully');
+    } catch (error) {
+      console.error('Error adding image:', error);
+      Alert.alert('Error', 'Failed to add image');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteImage = async (imageId: string) => {
+    if (productImages.length <= 1) {
+      Alert.alert('Error', 'Cannot delete the last image');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Image',
+      'Are you sure you want to delete this image?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('product_images')
+                .delete()
+                .eq('id', imageId);
+
+              if (error) throw error;
+              await fetchProductImages();
+              Alert.alert('Success', 'Image deleted successfully');
+            } catch (error) {
+              console.error('Error deleting image:', error);
+              Alert.alert('Error', 'Failed to delete image');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleSetPrimary = async (imageId: string) => {
+    try {
+      const { error } = await supabase
+        .from('product_images')
+        .update({ is_primary: true })
+        .eq('id', imageId);
+
+      if (error) throw error;
+      await fetchProductImages();
+      Alert.alert('Success', 'Primary image updated');
+    } catch (error) {
+      console.error('Error setting primary image:', error);
+      Alert.alert('Error', 'Failed to update primary image');
+    }
+  };
+
+  const handleMoveImage = async (imageId: string, direction: 'up' | 'down') => {
+    const currentIndex = productImages.findIndex(img => img.id === imageId);
+    if (currentIndex === -1) return;
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+    if (newIndex < 0 || newIndex >= productImages.length) return;
+
+    try {
+      const currentImage = productImages[currentIndex];
+      const swapImage = productImages[newIndex];
+
+      // Swap display orders
+      await supabase
+        .from('product_images')
+        .update({ display_order: swapImage.display_order })
+        .eq('id', currentImage.id);
+
+      await supabase
+        .from('product_images')
+        .update({ display_order: currentImage.display_order })
+        .eq('id', swapImage.id);
+
+      await fetchProductImages();
+    } catch (error) {
+      console.error('Error moving image:', error);
+      Alert.alert('Error', 'Failed to reorder image');
+    }
+  };
+
   if (!product) return null;
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Product Details</Text>
-          <Pressable style={styles.closeButton} onPress={onClose}>
-            <X size={24} color="#1F2937" />
-          </Pressable>
-        </View>
+    <>
+      <Modal
+        visible={visible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={onClose}
+      >
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Product Details</Text>
+            <Pressable style={styles.closeButton} onPress={onClose}>
+              <X size={24} color="#1F2937" />
+            </Pressable>
+          </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Product Image */}
-          <Image
-            source={{ uri: product.image_url }}
-            style={styles.productImage}
-            resizeMode="cover"
-          />
-
-          {/* Product Info */}
-          <View style={styles.productInfo}>
-            <View style={styles.productHeader}>
-              <Text style={styles.productName}>{product.name}</Text>
-              <View style={styles.statusContainer}>
-                {product.is_active ? (
-                  <View style={styles.activeStatus}>
-                    <Eye size={16} color="#10B981" />
-                    <Text style={styles.activeText}>Active</Text>
-                  </View>
-                ) : (
-                  <View style={styles.inactiveStatus}>
-                    <EyeOff size={16} color="#EF4444" />
-                    <Text style={styles.inactiveText}>Inactive</Text>
-                  </View>
+          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+            {/* Product Images Gallery */}
+            <View style={styles.imageSection}>
+              <View style={styles.imageSectionHeader}>
+                <Text style={styles.sectionTitle}>Product Images</Text>
+                {isAdmin && (
+                  <Pressable
+                    style={styles.addImageButton}
+                    onPress={() => setShowImageModal(true)}
+                  >
+                    <Plus size={16} color="#FFFFFF" />
+                    <Text style={styles.addImageText}>Add Image</Text>
+                  </Pressable>
                 )}
               </View>
+
+              <FlatList
+                data={productImages}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.imageGallery}
+                renderItem={({ item, index }) => (
+                  <View style={styles.imageContainer}>
+                    <View style={styles.imageWrapper}>
+                    <Image
+  source={{ uri: item.image_url }}
+  style={styles.productImage}
+  resizeMode="cover"
+/>
+
+                      {item.is_primary && (
+                        <View style={styles.primaryBadge}>
+                          <Star size={12} color="#FFFFFF" fill="#FFFFFF" />
+                          <Text style={styles.primaryText}>Primary</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {isAdmin && (
+                      <View style={styles.imageControls}>
+                        <View style={styles.imageControlsRow}>
+                          <Pressable
+                            style={[styles.controlButton, styles.moveButton]}
+                            onPress={() => handleMoveImage(item.id, 'up')}
+                            disabled={index === 0}
+                          >
+                            <ArrowUp size={12} color={index === 0 ? "#9CA3AF" : "#6B7280"} />
+                          </Pressable>
+                          <Pressable
+                            style={[styles.controlButton, styles.moveButton]}
+                            onPress={() => handleMoveImage(item.id, 'down')}
+                            disabled={index === productImages.length - 1}
+                          >
+                            <ArrowDown size={12} color={index === productImages.length - 1 ? "#9CA3AF" : "#6B7280"} />
+                          </Pressable>
+                        </View>
+                        <View style={styles.imageControlsRow}>
+                          {!item.is_primary && (
+                            <Pressable
+                              style={[styles.controlButton, styles.primaryButton]}
+                              onPress={() => handleSetPrimary(item.id)}
+                            >
+                              <Star size={12} color="#FFFFFF" />
+                            </Pressable>
+                          )}
+                          <Pressable
+                            style={[styles.controlButton, styles.deleteButton]}
+                            onPress={() => handleDeleteImage(item.id)}
+                          >
+                            <Trash2 size={12} color="#FFFFFF" />
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+              />
             </View>
 
-            <Text style={styles.productPrice}>{formatCurrency(product.price)}</Text>
-            <Text style={styles.productDescription}>{product.description}</Text>
-
-            <View style={styles.categoryContainer}>
-              <Tag size={16} color="#7C3AED" />
-              <Text style={styles.categoryText}>{product.category}</Text>
-            </View>
-          </View>
-
-          {/* Product Details */}
-          <View style={styles.detailsSection}>
-            <Text style={styles.sectionTitle}>Product Details</Text>
-            
-            <View style={styles.detailCard}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Product ID</Text>
-                <Text style={styles.detailValue}>#{product.id.slice(0, 8)}</Text>
-              </View>
+            {/* Product Information */}
+            <View style={styles.infoSection}>
+              <Text style={styles.productName}>{product.name}</Text>
+              <Text style={styles.productPrice}>₦{product.price.toLocaleString()}</Text>
+              <Text style={styles.productDescription}>{product.description}</Text>
               
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Stock Quantity</Text>
-                <Text style={[
-                  styles.detailValue,
-                  { color: product.stock > 0 ? '#10B981' : '#EF4444' }
-                ]}>
-                  {product.stock} {product.stock === 1 ? 'item' : 'items'}
+              <View style={styles.productMeta}>
+                <Text style={styles.metaItem}>Category: {product.category}</Text>
+                <Text style={styles.metaItem}>Stock: {product.stock}</Text>
+                <Text style={styles.metaItem}>
+                  Status: {product.is_active ? 'Active' : 'Inactive'}
                 </Text>
               </View>
 
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Status</Text>
-                <Text style={[
-                  styles.detailValue,
-                  { color: product.is_active ? '#10B981' : '#EF4444' }
-                ]}>
-                  {product.is_active ? 'Active' : 'Inactive'}
+              {/* Sizes - Only show if available */}
+              {product.sizes && product.sizes.length > 0 && (
+                <View style={styles.variantSection}>
+                  <Text style={styles.variantTitle}>Available Sizes</Text>
+                  <View style={styles.variantList}>
+                    {product.sizes.map((size, index) => (
+                      <View key={index} style={styles.variantChip}>
+                        <Text style={styles.variantText}>{size}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Colors - Only show if available */}
+              {product.colors && product.colors.length > 0 && (
+                <View style={styles.variantSection}>
+                  <Text style={styles.variantTitle}>Available Colors</Text>
+                  <View style={styles.variantList}>
+                    {product.colors.map((color, index) => (
+                      <View key={index} style={styles.variantChip}>
+                        <Text style={styles.variantText}>{color}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Add Image Modal */}
+      <Modal
+        visible={showImageModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowImageModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.addImageModal}>
+            <Text style={styles.addImageModalTitle}>Add Product Image</Text>
+            
+            <View style={styles.addImageForm}>
+              <Text style={styles.formLabel}>Image URL *</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newImageUrl}
+                onChangeText={setNewImageUrl}
+                placeholder="https://images.pexels.com/..."
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.formLabel}>Alt Text</Text>
+              <TextInput
+                style={styles.formInput}
+                value={newImageAlt}
+                onChangeText={setNewImageAlt}
+                placeholder="Describe the image"
+                placeholderTextColor="#9CA3AF"
+              />
+
+              {newImageUrl ? (
+                <View style={styles.imagePreviewContainer}>
+                  <Text style={styles.previewLabel}>Preview:</Text>
+                  <Image
+  source={{ uri: newImageUrl }}
+  style={styles.imagePreview}
+  resizeMode="cover"
+/>
+
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.addImageModalActions}>
+              <Pressable
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowImageModal(false);
+                  setNewImageUrl('');
+                  setNewImageAlt('');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+                onPress={handleAddImage}
+                disabled={loading || !newImageUrl.trim()}
+              >
+                <Save size={16} color="#FFFFFF" />
+                <Text style={styles.saveButtonText}>
+                  {loading ? 'Adding...' : 'Add Image'}
                 </Text>
-              </View>
+              </Pressable>
             </View>
           </View>
-
-          {/* Variants */}
-          <View style={styles.variantsSection}>
-            <Text style={styles.sectionTitle}>Available Variants</Text>
-            
-            <View style={styles.variantCard}>
-              <Text style={styles.variantTitle}>Sizes</Text>
-              <View style={styles.variantOptions}>
-                {product.sizes.map((size, index) => (
-                  <View key={index} style={styles.variantChip}>
-                    <Text style={styles.variantText}>{size}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.variantCard}>
-              <Text style={styles.variantTitle}>Colors</Text>
-              <View style={styles.variantOptions}>
-                {product.colors.map((color, index) => (
-                  <View key={index} style={styles.variantChip}>
-                    <Text style={styles.variantText}>{color}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Timestamps */}
-          <View style={styles.timestampsSection}>
-            <Text style={styles.sectionTitle}>Timestamps</Text>
-            
-            <View style={styles.timestampCard}>
-              <View style={styles.timestampRow}>
-                <Calendar size={16} color="#6B7280" />
-                <View style={styles.timestampInfo}>
-                  <Text style={styles.timestampLabel}>Created</Text>
-                  <Text style={styles.timestampValue}>
-                    {formatDate(product.created_at)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.timestampRow}>
-                <Calendar size={16} color="#6B7280" />
-                <View style={styles.timestampInfo}>
-                  <Text style={styles.timestampLabel}>Last Updated</Text>
-                  <Text style={styles.timestampValue}>
-                    {formatDate(product.updated_at)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </Modal>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -218,62 +438,109 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  productImage: {
-    width: '100%',
-    height: 300,
+  imageSection: {
+    paddingVertical: 20,
   },
-  productInfo: {
-    padding: 20,
-  },
-  productHeader: {
+  imageSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+  },
+  addImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  addImageText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  imageGallery: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  imageContainer: {
+    width: 200,
+    marginRight: 12,
+  },
+  imageWrapper: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  productImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+  },
+  primaryBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  primaryText: {
+    fontSize: 10,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  imageControls: {
+    gap: 4,
+  },
+  imageControlsRow: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  controlButton: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveButton: {
+    backgroundColor: '#F3F4F6',
+  },
+  primaryButton: {
+    backgroundColor: '#F59E0B',
+  },
+  deleteButton: {
+    backgroundColor: '#EF4444',
+  },
+  infoSection: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
   },
   productName: {
-    flex: 1,
     fontSize: 24,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    marginRight: 16,
-  },
-  statusContainer: {
-    alignItems: 'flex-end',
-  },
-  activeStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#D1FAE5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  activeText: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: '#10B981',
-  },
-  inactiveStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  inactiveText: {
-    fontSize: 12,
-    fontFamily: 'Inter-SemiBold',
-    color: '#EF4444',
+    marginBottom: 8,
   },
   productPrice: {
-    fontSize: 28,
+    fontSize: 20,
     fontFamily: 'Inter-Bold',
     color: '#7C3AED',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   productDescription: {
     fontSize: 16,
@@ -282,113 +549,129 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 16,
   },
-  categoryContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  productMeta: {
+    backgroundColor: '#F9FAFB',
     borderRadius: 8,
-    alignSelf: 'flex-start',
-    gap: 6,
-  },
-  categoryText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#7C3AED',
-  },
-  detailsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-    color: '#1F2937',
+    padding: 12,
     marginBottom: 16,
   },
-  detailCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  detailLabel: {
+  metaItem: {
     fontSize: 14,
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
+    marginBottom: 4,
   },
-  detailValue: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#1F2937',
-  },
-  variantsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-  },
-  variantCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  variantSection: {
+    marginBottom: 16,
   },
   variantTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  variantOptions: {
+  variantList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
   variantChip: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#7C3AED',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   variantText: {
     fontSize: 12,
-    fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
-  timestampsSection: {
-    paddingHorizontal: 20,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addImageModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+  },
+  addImageModalTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-Bold',
+    color: '#1F2937',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  addImageForm: {
     marginBottom: 24,
   },
-  timestampCard: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-  },
-  timestampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  timestampInfo: {
-    flex: 1,
-  },
-  timestampLabel: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-    marginBottom: 2,
-  },
-  timestampValue: {
+  formLabel: {
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  formInput: {
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
     color: '#1F2937',
+    marginBottom: 16,
+  },
+  imagePreviewContainer: {
+    marginTop: 8,
+  },
+  previewLabel: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+  },
+  addImageModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#6B7280',
+  },
+  saveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#7C3AED',
+    gap: 6,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
+  },
+  saveButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
 });

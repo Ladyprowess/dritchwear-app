@@ -20,7 +20,7 @@ interface Product {
   stock: number;
 }
 
-const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals'];
+const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals', 'Merchandise', 'Accessories'];
 
 export default function ShopScreen() {
   const { user, profile, refreshProfile } = useAuth();

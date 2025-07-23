@@ -1,22 +1,60 @@
 {
   "cli": {
-    "version": ">= 16.13.2",
+    "version": ">= 6.0.0",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qtuzimwhozhutegksqzj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0dXppbXdob3podXRlZ2tzcXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5Njg5MjEsImV4cCI6MjA2NjU0NDkyMX0.JsVqKI3NO9s3dAu6B1RV4_oKE5q7pRhAlRLMBG1EhGg",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_live_85967dafbc2f5a466ae60290a71f8291624aa590",
+        "PAYPAL_CLIENT_ID": "AZx0ACxuHZ0W1d2G-JPzkVVY6nsMVCTlfFXXCIa4X_5fO8VyvPBP9SDluOjEkb37D63DpL6HanAs1xVW",
+        "PAYPAL_CLIENT_SECRET": "EFTqYe_lA9VH9xG5Ytyv2ObHALRZLaBvdiB8hr0iKBagPDlv5fukWmL0I3x_nRPjTBKsPFzbyOrfRFz0",
+        "PAYPAL_ENVIRONMENT": "production"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qtuzimwhozhutegksqzj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0dXppbXdob3podXRlZ2tzcXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5Njg5MjEsImV4cCI6MjA2NjU0NDkyMX0.JsVqKI3NO9s3dAu6B1RV4_oKE5q7pRhAlRLMBG1EhGg",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_live_85967dafbc2f5a466ae60290a71f8291624aa590",
+        "PAYPAL_CLIENT_ID": "AZx0ACxuHZ0W1d2G-JPzkVVY6nsMVCTlfFXXCIa4X_5fO8VyvPBP9SDluOjEkb37D63DpL6HanAs1xVW",
+        "PAYPAL_CLIENT_SECRET": "EFTqYe_lA9VH9xG5Ytyv2ObHALRZLaBvdiB8hr0iKBagPDlv5fukWmL0I3x_nRPjTBKsPFzbyOrfRFz0",
+        "PAYPAL_ENVIRONMENT": "production"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qtuzimwhozhutegksqzj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0dXppbXdob3podXRlZ2tzcXpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA5Njg5MjEsImV4cCI6MjA2NjU0NDkyMX0.JsVqKI3NO9s3dAu6B1RV4_oKE5q7pRhAlRLMBG1EhGg",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_live_85967dafbc2f5a466ae60290a71f8291624aa590",
+        "PAYPAL_CLIENT_ID": "AZx0ACxuHZ0W1d2G-JPzkVVY6nsMVCTlfFXXCIa4X_5fO8VyvPBP9SDluOjEkb37D63DpL6HanAs1xVW",
+        "PAYPAL_CLIENT_SECRET": "EFTqYe_lA9VH9xG5Ytyv2ObHALRZLaBvdiB8hr0iKBagPDlv5fukWmL0I3x_nRPjTBKsPFzbyOrfRFz0",
+        "PAYPAL_ENVIRONMENT": "production"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {},
+      "ios": {}
+    }
   }
 }

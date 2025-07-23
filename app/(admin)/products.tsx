@@ -47,7 +47,7 @@ interface ProductFormData {
   is_active: boolean;
 }
 
-const categories = ['T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Shorts', 'Shirts', 'Casuals'];
+const categories = ['T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Shorts', 'Shirts', 'Casuals', 'Merchandise', 'Accessories'];
 const defaultSizes = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const defaultColors = ['Black', 'White', 'Navy', 'Grey', 'Beige', 'Brown'];
 
@@ -811,6 +811,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
+  },
+  variantInfo: {
+    alignItems: 'center',
+  },
+  variantText: {
+    fontSize: 10,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    marginBottom: 2,
   },
   statusButton: {
     flexDirection: 'row',

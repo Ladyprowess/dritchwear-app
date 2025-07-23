@@ -9,8 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
-    },
+  "supportsTablet": true,
+  "infoPlist": {
+    "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload logos.",
+    "NSCameraUsageDescription": "This app needs camera access to allow you take product or logo photos."
+  }
+},
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -39,13 +43,18 @@
       "url": "https://u.expo.dev/99a85905-b370-4a58-b525-5de48d3b5568"
     },
     "android": {
-      "package": "com.dritchwear.app",
-      "versionCode": 1,
-      "permissions": ["NOTIFICATIONS"],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FFFFFF"
-      }
-    }
+  "package": "com.dritchwear.app",
+  "versionCode": 3,
+  "permissions": [
+    "NOTIFICATIONS",
+    "READ_MEDIA_IMAGES", // For Android 13+
+    "READ_EXTERNAL_STORAGE", // For Android <= 12
+    "WRITE_EXTERNAL_STORAGE"
+  ],
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/images/adaptive-icon.png",
+    "backgroundColor": "#FFFFFF"
+  }
+}
   }
 }
