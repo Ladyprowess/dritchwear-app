@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -8,6 +8,7 @@ import { Wallet, Plus, Sparkles, ShoppingBag, Star, ShoppingCart } from 'lucide-
 import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
 
 interface Product {
   id: string;
@@ -33,6 +34,7 @@ interface SpecialOffer {
 export default function HomeScreen() {
   const { profile, refreshProfile, user } = useAuth();
   const router = useRouter();
+  const { insets } = useEdgeToEdge();
   const [products, setProducts] = useState<Product[]>([]);
   const [specialOffers, setSpecialOffers] = useState<SpecialOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +177,7 @@ export default function HomeScreen() {
   const currentOffer = specialOffers.length > 0 ? specialOffers[0] : null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]} edges={['left', 'right']}>
       <ScrollView 
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}

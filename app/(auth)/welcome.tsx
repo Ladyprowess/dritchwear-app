@@ -1,19 +1,21 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Image } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, Pressable, Image, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const { insets } = useEdgeToEdge();
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+    <View style={styles.container}>
+      <StatusBar style="light" translucent backgroundColor="transparent" />
       <LinearGradient
         colors={['#7C3AED', '#3B82F6']}
-        style={styles.gradient}
+        style={[styles.gradient, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
       >
         <View style={styles.content}>
           {/* Logo/Brand Section */}
@@ -69,7 +71,7 @@ export default function WelcomeScreen() {
           </View>
         </View>
       </LinearGradient>
-    </SafeAreaView>
+    </View>
   );
 }
 

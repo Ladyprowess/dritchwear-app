@@ -44,7 +44,7 @@
     },
     "android": {
   "package": "com.dritchwear.app",
-  "versionCode": 5,
+  "versionCode": 6,
   "permissions": [
     "NOTIFICATIONS",
     "READ_MEDIA_IMAGES", // For Android 13+

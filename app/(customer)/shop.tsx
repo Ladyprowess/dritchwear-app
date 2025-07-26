@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, FlatList, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { Search, Filter, Star, ShoppingCart } from 'lucide-react-native';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
+import EdgeToEdgeWrapper from '@/components/EdgeToEdgeWrapper';
 
 interface Product {
   id: string;
@@ -25,6 +26,7 @@ const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals',
 export default function ShopScreen() {
   const { user, profile, refreshProfile } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -156,7 +158,7 @@ export default function ShopScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <EdgeToEdgeWrapper>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Shop</Text>
@@ -367,7 +369,7 @@ export default function ShopScreen() {
         }}
         onOrderSuccess={handleOrderSuccess}
       />
-    </SafeAreaView>
+    </EdgeToEdgeWrapper>
   );
 }
 
