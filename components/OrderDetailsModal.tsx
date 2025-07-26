@@ -457,15 +457,20 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
     <Send size={20} color="#6B7280" />
     <View style={styles.infoContent}>
       <Text style={styles.infoLabel}>Invoice Status</Text>
-      <Text style={[
-        styles.infoValue,
-        { color: (order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? '#10B981' : '#F59E0B' }
-      ]}>
-        {(order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? 'Invoice Sent' : 'No Invoice Sent'}
+      <Text
+        style={[
+          styles.infoValue,
+          { color: (order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? '#10B981' : '#F59E0B' }
+        ]}
+      >
+        {(order.invoice_sent || (order.invoices && order.invoices.length > 0))
+          ? isAdmin ? 'Invoice Sent' : 'Invoice Received'
+          : 'No Invoice Yet'}
       </Text>
     </View>
   </View>
 )}
+
 
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
