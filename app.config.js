@@ -46,7 +46,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         android: {
           compileSdkVersion: 35,
           targetSdkVersion: 35,
-          minSdkVersion: 21,
+          minSdkVersion: 24,
           enableEdgeToEdge: true,
         },
       },
