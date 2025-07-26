@@ -497,7 +497,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
             </View>
 
             {/* Status Management (Admin Only) */}
-            {isAdmin && !['completed', 'cancelled', 'delivered', 'rejected', 'payment_made'].includes(currentStatus || '') && (
+            {isAdmin && !['completed', 'cancelled', 'delivered', 'rejected'].includes(currentStatus || '') && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Status Management</Text>
                 <View style={styles.statusCard}>
