@@ -328,8 +328,6 @@ export default function CartScreen() {
           {!appliedPromo && availablePromos.length > 0 && (
             <View style={styles.promoHint}>
               <Text style={styles.promoHintText}>
-                
-                {availablePromos.length > 3 ? ' and more' : ''}
               </Text>
             </View>
           )}
