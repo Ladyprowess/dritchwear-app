@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert, FlatList } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -8,8 +8,7 @@ import { Wallet, Plus, Sparkles, ShoppingBag, Star, ShoppingCart } from 'lucide-
 import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
-import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
-import ResponsiveGrid from '@/components/ResponsiveGrid';
+import EdgeToEdgeWrapper from '@/components/EdgeToEdgeWrapper';
 
 interface Product {
   id: string;
@@ -32,10 +31,11 @@ interface SpecialOffer {
   is_active: boolean;
 }
 
+
+
 export default function HomeScreen() {
   const { profile, refreshProfile, user } = useAuth();
   const router = useRouter();
-  const { insets, getSafePadding, screenInfo, getResponsivePadding, getResponsiveFontSize } = useEdgeToEdge();
   const [products, setProducts] = useState<Product[]>([]);
   const [specialOffers, setSpecialOffers] = useState<SpecialOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,40 +177,31 @@ export default function HomeScreen() {
 
   const currentOffer = specialOffers.length > 0 ? specialOffers[0] : null;
 
+  
+
   return (
-    <View style={[styles.container, { 
-      paddingTop: getSafePadding('top'),
-      paddingLeft: getSafePadding('left'),
-      paddingRight: getSafePadding('right')
-    }]}>
-      <ScrollView 
-        style={styles.scrollView}
+    <EdgeToEdgeWrapper>
+      <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        contentContainerStyle={{ paddingBottom: getSafePadding('bottom') }}
       >
-        {/* Header */}
+        {/* Header + Wallet */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
             <Text style={styles.userName}>{profile?.full_name || 'Dritchwear Customer'}</Text>
           </View>
           
-          <LinearGradient
-            colors={['#7C3AED', '#3B82F6']}
-            style={styles.walletCard}
-          >
+          <LinearGradient colors={['#7C3AED', '#3B82F6']} style={styles.walletCard}>
             <View style={styles.walletContent}>
               <Wallet size={20} color="#FFFFFF" />
-              <Text style={styles.walletBalance}>
-                {getWalletBalance()}
-              </Text>
+              <Text style={styles.walletBalance}>{getWalletBalance()}</Text>
             </View>
           </LinearGradient>
         </View>
-
+  
         {/* Quick Actions */}
         <View style={styles.quickActionsContainer}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -231,7 +222,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
-
+  
         {/* Featured Products */}
         <View style={styles.productsContainer}>
           <View style={styles.sectionHeader}>
@@ -240,37 +231,31 @@ export default function HomeScreen() {
               <Text style={styles.seeAllText}>See All</Text>
             </Pressable>
           </View>
-
+  
           {loading ? (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading products...</Text>
             </View>
           ) : products.length > 0 ? (
-            <ResponsiveGrid
+            <FlatList
               data={products}
-              keyExtractor={(item: Product) => item.id}
-              defaultColumns={2}
-              spacing={16}
-              scrollEnabled={false} // Prevent FlatList from scrolling inside ScrollView
-              contentContainerStyle={{ paddingBottom: 12 }}
-              renderItem={({ item }: { item: Product }) => (
-                <Pressable 
-                  key={item.id} 
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              scrollEnabled={false}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              columnWrapperStyle={{
+                justifyContent: 'space-between',
+                marginBottom: 16,
+              }}
+              renderItem={({ item }) => (
+                <Pressable
                   style={styles.productCard}
                   onPress={() => handleProductPress(item)}
                 >
-                  <Image
-                    source={{ uri: item.image_url }}
-                    style={styles.productImage}
-                    resizeMode="cover"
-                  />
+                  <Image source={{ uri: item.image_url }} style={styles.productImage} resizeMode="cover" />
                   <View style={styles.productInfo}>
-                    <Text style={styles.productName} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.productPrice}>
-                      {formatProductPrice(item.price)}
-                    </Text>
+                    <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
+                    <Text style={styles.productPrice}>{formatProductPrice(item.price)}</Text>
                     <View style={styles.productFooter}>
                       <View style={styles.ratingContainer}>
                         <Star size={12} color="#F59E0B" fill="#F59E0B" />
@@ -295,8 +280,8 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
-
-        {/* Dynamic Special Offer Banner */}
+  
+        {/* Special Offer */}
         {currentOffer && (
           <LinearGradient
             colors={['#F59E0B', '#F97316']}
@@ -312,20 +297,21 @@ export default function HomeScreen() {
             </View>
           </LinearGradient>
         )}
+  
+        {/* Modal */}
+        <ProductModal
+          product={selectedProduct}
+          visible={showProductModal}
+          onClose={() => {
+            setShowProductModal(false);
+            setSelectedProduct(null);
+          }}
+          onOrderSuccess={handleOrderSuccess}
+        />
       </ScrollView>
-
-      {/* Product Modal */}
-      <ProductModal
-        product={selectedProduct}
-        visible={showProductModal}
-        onClose={() => {
-          setShowProductModal(false);
-          setSelectedProduct(null);
-        }}
-        onOrderSuccess={handleOrderSuccess}
-      />
-    </View>
+    </EdgeToEdgeWrapper>
   );
+
 }
 
 const styles = StyleSheet.create({
@@ -440,8 +426,7 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   productCard: {
-    flex: 1,
-    marginHorizontal: 4,
+    width: '48%',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',

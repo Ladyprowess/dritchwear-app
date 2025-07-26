@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, FlatList, FlatListProps } from 'react-native';
+import { FlatList, FlatListProps, ViewStyle } from 'react-native';
 import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
 
 interface ResponsiveGridProps<T> extends Omit<FlatListProps<T>, 'numColumns' | 'columnWrapperStyle'> {
@@ -18,22 +18,22 @@ export default function ResponsiveGrid<T>({
   enableResponsiveColumns = true,
   ...flatListProps
 }: ResponsiveGridProps<T>) {
-  const { getLayoutColumns, screenInfo, getResponsivePadding } = useEdgeToEdge();
-  
+  const { getLayoutColumns, screenInfo } = useEdgeToEdge();
   const numColumns = enableResponsiveColumns ? getLayoutColumns(defaultColumns) : defaultColumns;
-  const responsivePadding = getResponsivePadding();
 
-  const columnWrapperStyle = numColumns > 1 ? {
-    justifyContent: 'space-between' as const,
-    paddingHorizontal: responsivePadding,
-    marginBottom: spacing,
-  } : undefined;
+  const columnWrapperStyle: ViewStyle | undefined = numColumns > 1
+    ? {
+        justifyContent: 'space-between',
+        paddingHorizontal: spacing,
+        marginBottom: spacing,
+      }
+    : undefined;
 
   const contentContainerStyle = [
     flatListProps.contentContainerStyle,
     {
-      paddingHorizontal: numColumns === 1 ? responsivePadding : 0,
-    }
+      paddingBottom: spacing + 20,
+    },
   ];
 
   return (
@@ -42,7 +42,7 @@ export default function ResponsiveGrid<T>({
       data={data}
       renderItem={renderItem}
       numColumns={numColumns}
-      key={`${numColumns}-${screenInfo.isLandscape}`} // Force re-render on orientation change
+      key={`${numColumns}-${screenInfo.isLandscape}`} // re-render on orientation change
       columnWrapperStyle={columnWrapperStyle}
       contentContainerStyle={contentContainerStyle}
       showsVerticalScrollIndicator={false}
