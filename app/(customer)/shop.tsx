@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, FlatList, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,6 +8,8 @@ import { Search, Filter, Star, ShoppingCart } from 'lucide-react-native';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
 import EdgeToEdgeWrapper from '@/components/EdgeToEdgeWrapper';
+import ResponsiveGrid from '@/components/ResponsiveGrid';
+import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
 
 interface Product {
   id: string;
@@ -26,7 +28,7 @@ const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals',
 export default function ShopScreen() {
   const { user, profile, refreshProfile } = useAuth();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
+  const { insets, screenInfo, getResponsivePadding, getResponsiveFontSize } = useEdgeToEdge();
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -191,7 +193,7 @@ export default function ShopScreen() {
         horizontal 
         showsHorizontalScrollIndicator={false}
         style={styles.categoriesContainer}
-        contentContainerStyle={[styles.categoriesContent, { paddingHorizontal: 20 + insets.left }]}
+        contentContainerStyle={[styles.categoriesContent, { paddingHorizontal: getResponsivePadding() }]}
       >
         {categories.map((category) => (
           <Pressable
@@ -215,16 +217,13 @@ export default function ShopScreen() {
       </ScrollView>
 
       {/* Products Grid */}
-      <FlatList
+      <ResponsiveGrid
         data={filteredProducts}
-        renderItem={renderProduct}
-        keyExtractor={(item) => item.id}
-        numColumns={2}
-        contentContainerStyle={[styles.productsContainer, { 
-          paddingHorizontal: 20 + insets.left,
-          paddingBottom: 100 + insets.bottom 
-        }]}
-        columnWrapperStyle={styles.productRow}
+        renderItem={({ item }) => renderProduct({ item })}
+        keyExtractor={(item: Product) => item.id}
+        defaultColumns={2}
+        spacing={16}
+        contentContainerStyle={{ paddingBottom: 100 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -493,11 +492,9 @@ const styles = StyleSheet.create({
   productsContainer: {
     paddingTop: 40,
   },
-  productRow: {
-    justifyContent: 'space-between',
-  },
   productCard: {
-    width: '48%',
+    flex: 1,
+    marginHorizontal: 4,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',

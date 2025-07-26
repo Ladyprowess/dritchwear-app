@@ -34,12 +34,12 @@ export default function RootLayout() {
   useEffect(() => {
     // Configure edge-to-edge for Android 15+
     if (Platform.OS === 'android') {
-      // Enable edge-to-edge display
+      // Use updated APIs for Android 15+ compatibility
       SystemUI.setBackgroundColorAsync('transparent');
       
       if (Platform.Version >= 35) {
         console.log('Configuring edge-to-edge for Android 15+ (SDK 35+)');
-        // Additional Android 15+ specific configurations can be added here
+        // Android 15+ handles edge-to-edge automatically with proper inset handling
       }
     }
   }, []);

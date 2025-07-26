@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
 import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
+import ResponsiveGrid from '@/components/ResponsiveGrid';
 
 interface Product {
   id: string;
@@ -34,7 +35,7 @@ interface SpecialOffer {
 export default function HomeScreen() {
   const { profile, refreshProfile, user } = useAuth();
   const router = useRouter();
-  const { insets, getSafePadding } = useEdgeToEdge();
+  const { insets, getSafePadding, screenInfo, getResponsivePadding, getResponsiveFontSize } = useEdgeToEdge();
   const [products, setProducts] = useState<Product[]>([]);
   const [specialOffers, setSpecialOffers] = useState<SpecialOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -245,17 +246,14 @@ export default function HomeScreen() {
               <Text style={styles.loadingText}>Loading products...</Text>
             </View>
           ) : products.length > 0 ? (
-            <FlatList
+            <ResponsiveGrid
               data={products}
-              keyExtractor={(item) => item.id}
-              numColumns={2}
+              keyExtractor={(item: Product) => item.id}
+              defaultColumns={2}
+              spacing={16}
               scrollEnabled={false} // Prevent FlatList from scrolling inside ScrollView
               contentContainerStyle={{ paddingBottom: 12 }}
-              columnWrapperStyle={{
-                justifyContent: 'space-between',
-                marginBottom: 16,
-              }}
-              renderItem={({ item }) => (
+              renderItem={({ item }: { item: Product }) => (
                 <Pressable 
                   key={item.id} 
                   style={styles.productCard}
@@ -442,7 +440,8 @@ const styles = StyleSheet.create({
     color: '#6B7280',
   },
   productCard: {
-    width: '48%',
+    flex: 1,
+    marginHorizontal: 4,
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     overflow: 'hidden',

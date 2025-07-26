@@ -14,8 +14,7 @@
       "translucent": true
     },
     "androidNavigationBar": {
-      "visible": "leanback",
-      "barStyle": "dark-content",
+      "visible": "sticky-immersive",
       "backgroundColor": "transparent"
     },
     "ios": {
@@ -34,7 +33,16 @@
       "expo-router",
       "expo-font",
       "expo-web-browser",
-      "expo-system-ui"
+      "expo-system-ui",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -59,6 +67,10 @@
   "compileSdkVersion": 35,
   "targetSdkVersion": 35,
   "buildToolsVersion": "35.0.0",
+  "resizeableActivity": true,
+  "supportsPictureInPicture": false,
+  "largeScreenSupport": true,
+  "screenOrientation": "unspecified",
   "permissions": [
     "NOTIFICATIONS",
     "READ_MEDIA_IMAGES", // For Android 13+
@@ -69,7 +81,8 @@
     "foregroundImage": "./assets/images/adaptive-icon.png",
     "backgroundColor": "#FFFFFF"
   },
-  "softwareKeyboardLayoutMode": "pan"
+  "softwareKeyboardLayoutMode": "pan",
+  "windowSoftInputMode": "adjustResize"
 }
   }
 }
