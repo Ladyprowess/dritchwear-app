@@ -369,8 +369,8 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   const canSendInvoice = () => {
     if (!isAdmin || !isCustomOrder) return false;
     if (['completed', 'cancelled', 'rejected'].includes(currentStatus || '')) return false;
-    if (order.invoice_sent) return false; // NEW: Check if invoice already sent
-    if (order.invoices && order.invoices.length > 0) return false; // Additional check
+    // Check both invoice_sent flag and existing invoices
+    if (order.invoice_sent || (order.invoices && order.invoices.length > 0)) return false;
     return true;
   };
 
@@ -453,19 +453,19 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
 
                 {/* NEW: Show invoice status for custom orders */}
                 {isCustomOrder && (
-                  <View style={styles.infoRow}>
-                    <Send size={20} color="#6B7280" />
-                    <View style={styles.infoContent}>
-                      <Text style={styles.infoLabel}>Invoice Status</Text>
-                      <Text style={[
-                        styles.infoValue,
-                        { color: order.invoice_sent ? '#10B981' : '#F59E0B' }
-                      ]}>
-                        {order.invoice_sent ? 'Invoice Sent' : 'No Invoice Sent'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
+  <View style={styles.infoRow}>
+    <Send size={20} color="#6B7280" />
+    <View style={styles.infoContent}>
+      <Text style={styles.infoLabel}>Invoice Status</Text>
+      <Text style={[
+        styles.infoValue,
+        { color: (order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? '#10B981' : '#F59E0B' }
+      ]}>
+        {(order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? 'Invoice Sent' : 'No Invoice Sent'}
+      </Text>
+    </View>
+  </View>
+)}
 
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
@@ -665,13 +665,13 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                 )}
 
                 {/* NEW: Show message if invoice already sent */}
-                {isAdmin && isCustomOrder && order.invoice_sent && (
-                  <View style={styles.invoiceAlreadySentCard}>
-                    <CheckCircle size={20} color="#10B981" />
-                    <Text style={styles.invoiceAlreadySentText}>
-                      Invoice has already been sent for this order
-                    </Text>
-                  </View>
+                {isAdmin && isCustomOrder && (order.invoice_sent || (order.invoices && order.invoices.length > 0)) && (
+  <View style={styles.invoiceAlreadySentCard}>
+    <CheckCircle size={20} color="#10B981" />
+    <Text style={styles.invoiceAlreadySentText}>
+      Invoice has already been sent for this order
+    </Text>
+  </View>
                 )}
               </View>
             ) : (
