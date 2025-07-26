@@ -66,7 +66,7 @@
     },
     "android": {
       "package": "com.dritchwear.app",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "NOTIFICATIONS",
         "READ_MEDIA_IMAGES"

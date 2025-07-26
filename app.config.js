@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     package: 'com.dritchwear.app',           // ✅ required for EAS builds
-    versionCode: 6,                          // ✅ increment this for each new build
+    versionCode: 7,                          // ✅ increment this for each new build
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#FFFFFF',

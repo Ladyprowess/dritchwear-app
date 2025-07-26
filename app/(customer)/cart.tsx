@@ -207,7 +207,7 @@ export default function CartScreen() {
           </Text>
           <Pressable 
             style={styles.shopButton}
-            onPress={() => router.push('/(customers)/shop')}
+            onPress={() => router.push('/(customer)/shop')}
           >
             <Text style={styles.shopButtonText}>Start Shopping</Text>
           </Pressable>
