@@ -216,6 +216,7 @@ export default function AdminOrdersScreen() {
       case 'quoted': return '#F59E0B';
       case 'accepted': return '#10B981';
       case 'rejected': return '#EF4444';
+      case 'payment_made': return '#8B5CF6';
       case 'completed': return '#059669';
       default: return '#6B7280';
     }

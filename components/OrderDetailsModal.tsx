@@ -82,7 +82,7 @@ const statusOptions = [
 ];
 
 const customStatusOptions = [
-  'pending', 'under_review', 'quoted', 'accepted', 'rejected', 'completed', 'cancelled'
+  'pending', 'under_review', 'quoted', 'accepted', 'rejected', 'payment_made', 'completed', 'cancelled'
 ];
 
 export default function OrderDetailsModal({ order, visible, onClose, onOrderUpdate }: OrderDetailsModalProps) {
@@ -359,6 +359,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
       case 'quoted': return '#F59E0B';
       case 'accepted': return '#10B981';
       case 'rejected': return '#EF4444';
+      case 'payment_made': return '#8B5CF6';
       case 'completed': return '#059669';
       default: return '#6B7280';
     }
@@ -491,7 +492,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
             </View>
 
             {/* Status Management (Admin Only) */}
-            {isAdmin && !['completed', 'cancelled', 'delivered', 'rejected'].includes(currentStatus || '') && (
+            {isAdmin && !['completed', 'cancelled', 'delivered', 'rejected', 'payment_made'].includes(currentStatus || '') && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Status Management</Text>
                 <View style={styles.statusCard}>
@@ -1261,6 +1262,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     color: '#6B7280',
+  },
+  completeOrderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    borderRadius: 8,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  completeOrderButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
   },
   invoiceModalSend: {
     flex: 1,

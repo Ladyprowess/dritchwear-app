@@ -181,6 +181,7 @@ export default function CustomerOrdersScreen() {
       case 'quoted': return '#F59E0B';
       case 'accepted': return '#10B981';
       case 'rejected': return '#EF4444';
+      case 'payment_made': return '#8B5CF6';
       case 'completed': return '#059669';
       default: return '#6B7280';
     }
@@ -501,17 +502,17 @@ export default function CustomerOrdersScreen() {
         .from('invoices')
         .update({ status: 'paid' })
         .eq('id', invoice.id);
-
+  
       if (invoiceError) throw invoiceError;
-
-      // Update custom request status to completed
+  
+      // UPDATED: Change custom request status to 'payment_made' instead of 'completed'
       const { error: requestError } = await supabase
         .from('custom_requests')
-        .update({ status: 'completed' })
+        .update({ status: 'payment_made' })
         .eq('id', customRequest.id);
-
+  
       if (requestError) throw requestError;
-
+  
       // Send notification to admin
       const { error: notificationError } = await supabase
         .from('notifications')
@@ -521,20 +522,20 @@ export default function CustomerOrdersScreen() {
           message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatInvoiceAmount(invoice)} via ${paymentMethod}`,
           type: 'order'
         });
-
+  
       if (notificationError) throw notificationError;
-
+  
       // CRITICAL: Only refresh profile for wallet payments
       if (paymentMethod === 'wallet') {
         await refreshProfile();
       }
-
+  
       Alert.alert(
         'Payment Successful',
         'Your payment has been processed successfully. Your custom order is now in production!',
         [{ text: 'OK' }]
       );
-
+  
       // Refresh orders to show updated status
       await fetchOrders();
     } catch (error) {
