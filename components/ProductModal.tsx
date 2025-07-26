@@ -211,7 +211,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           { text: 'Continue Shopping', onPress: handleClose },
           { text: 'View Cart', onPress: () => {
             handleClose();
-            router.push('/(customers)/cart');
+            router.push('/(customer)/cart');
           }}
         ]
       );

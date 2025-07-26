@@ -221,7 +221,7 @@ export default function CheckoutScreen() {
         'Order Placed Successfully',
         'Your order has been confirmed and is now pending processing. You will receive updates as it progresses.',
         [{ text: 'OK', onPress: () => {
-          router.replace('/(customers)/orders');
+          router.replace('/(customer)/orders');
         }}]
       );
     } catch (error) {
@@ -303,7 +303,7 @@ export default function CheckoutScreen() {
         'Order Placed Successfully',
         `Your payment of ${formatCurrency(orderData.original_amount, orderData.currency)} has been processed. Your order is now pending and will be processed soon!`,
         [{ text: 'OK', onPress: () => {
-          router.replace('/(customers)/orders');
+          router.replace('/(customer)/orders');
         }}]
       );
     } catch (error) {

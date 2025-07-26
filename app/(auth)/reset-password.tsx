@@ -158,7 +158,7 @@ export default function ResendConfirmationScreen() {
               Need help?{' '}
               <Text 
                 style={styles.footerLink}
-                onPress={() => router.push('/(customers)/help-support')}
+                onPress={() => router.push('/(customer)/help-support')}
               >
                 Contact Dritchwear Support
               </Text>
