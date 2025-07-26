@@ -3,25 +3,25 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'Dritchwear',
-  slug: 'dritchwear',
+  slug: 'dritch-wear',
   version: '1.0.0',
   orientation: 'portrait',
-  icon: './assets/icon.png',
+  icon: './assets/images/icon.png',
   userInterfaceStyle: 'light',
   splash: {
-    image: './assets/splash.png',
+    image: './assets/images/splash.png',
     resizeMode: 'contain',
     backgroundColor: '#ffffff',
   },
   androidStatusBar: {
     barStyle: 'dark-content',
-    backgroundColor: 'transparent',
+    backgroundColor: '#000000', // ✅ must be a valid hex color
     translucent: true,
   },
   androidNavigationBar: {
     visible: 'leanback',
     barStyle: 'dark-content',
-    backgroundColor: 'transparent',
+    backgroundColor: '#000000', // ✅ must be a valid hex color
   },
   assetBundlePatterns: ['**/*'],
   ios: {
@@ -29,17 +29,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/adaptive-icon.png',
+      foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#FFFFFF',
     },
-    compileSdkVersion: 35,
-    targetSdkVersion: 35,
-    minSdkVersion: 21,
-    // Enable edge-to-edge for Android 15+
-    enableEdgeToEdge: true,
+    // ✅ Removed invalid fields
   },
   web: {
-    favicon: './assets/favicon.png',
+    favicon: './assets/images/favicon.png',
   },
   plugins: [
     [

@@ -10,20 +10,20 @@
     "newArchEnabled": true,
     "androidStatusBar": {
       "barStyle": "dark-content",
-      "backgroundColor": "transparent",
+      "backgroundColor": "#000000",
       "translucent": true
     },
     "androidNavigationBar": {
       "visible": "sticky-immersive",
-      "backgroundColor": "transparent"
+      "backgroundColor": "#000000"
     },
     "ios": {
-  "supportsTablet": true,
-  "infoPlist": {
-    "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload logos.",
-    "NSCameraUsageDescription": "This app needs camera access to allow you take product or logo photos."
-  }
-},
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to upload logos.",
+        "NSCameraUsageDescription": "This app needs camera access to allow you take product or logo photos."
+      }
+    },
     "web": {
       "bundler": "metro",
       "output": "single",
@@ -38,6 +38,8 @@
         "expo-build-properties",
         {
           "android": {
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
             "enableProguardInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
           }
@@ -62,27 +64,17 @@
       "url": "https://u.expo.dev/99a85905-b370-4a58-b525-5de48d3b5568"
     },
     "android": {
-  "package": "com.dritchwear.app",
-  "versionCode": 6,
-  "compileSdkVersion": 35,
-  "targetSdkVersion": 35,
-  "buildToolsVersion": "35.0.0",
-  "resizeableActivity": true,
-  "supportsPictureInPicture": false,
-  "largeScreenSupport": true,
-  "screenOrientation": "unspecified",
-  "permissions": [
-    "NOTIFICATIONS",
-    "READ_MEDIA_IMAGES", // For Android 13+
-    "READ_EXTERNAL_STORAGE", // For Android <= 12
-    "WRITE_EXTERNAL_STORAGE"
-  ],
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/images/adaptive-icon.png",
-    "backgroundColor": "#FFFFFF"
-  },
-  "softwareKeyboardLayoutMode": "pan",
-  "windowSoftInputMode": "adjustResize"
-}
+      "package": "com.dritchwear.app",
+      "versionCode": 6,
+      "supportsPictureInPicture": false,
+      "permissions": [
+        "NOTIFICATIONS",
+        "READ_MEDIA_IMAGES"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    }
   }
 }
