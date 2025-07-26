@@ -328,7 +328,7 @@ export default function CartScreen() {
           {!appliedPromo && availablePromos.length > 0 && (
             <View style={styles.promoHint}>
               <Text style={styles.promoHintText}>
-                Available codes: {availablePromos.slice(0, 3).map(p => p.code).join(', ')}
+                
                 {availablePromos.length > 3 ? ' and more' : ''}
               </Text>
             </View>
