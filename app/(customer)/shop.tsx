@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, TextInput, FlatList, Alert, Modal, KeyboardAvoidingView, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'expo-router';
@@ -160,7 +160,7 @@ export default function ShopScreen() {
   return (
     <EdgeToEdgeWrapper>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.headerTitle}>Shop</Text>
         <View style={styles.headerActions}>
           <Pressable
@@ -173,7 +173,7 @@ export default function ShopScreen() {
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      <View style={[styles.searchContainer, { paddingHorizontal: 20 + insets.left }]}>
         <View style={styles.searchBar}>
           <Search size={20} color="#9CA3AF" />
           <TextInput
@@ -191,7 +191,7 @@ export default function ShopScreen() {
         horizontal 
         showsHorizontalScrollIndicator={false}
         style={styles.categoriesContainer}
-        contentContainerStyle={styles.categoriesContent}
+        contentContainerStyle={[styles.categoriesContent, { paddingHorizontal: 20 + insets.left }]}
       >
         {categories.map((category) => (
           <Pressable
@@ -220,7 +220,10 @@ export default function ShopScreen() {
         renderItem={renderProduct}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={styles.productsContainer}
+        contentContainerStyle={[styles.productsContainer, { 
+          paddingHorizontal: 20 + insets.left,
+          paddingBottom: 100 + insets.bottom 
+        }]}
         columnWrapperStyle={styles.productRow}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
@@ -374,16 +377,13 @@ export default function ShopScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingBottom: 16,
+    backgroundColor: '#F9FAFB',
   },
   headerTitle: {
     fontSize: 24,
@@ -433,7 +433,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   searchContainer: {
-    paddingHorizontal: 20,
     marginBottom: 16,
   },
   searchBar: {
@@ -464,7 +463,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   categoriesContent: {
-    paddingHorizontal: 20,
     paddingVertical: 4,
     gap: 8,
   },
@@ -494,8 +492,6 @@ const styles = StyleSheet.create({
   },
   productsContainer: {
     paddingTop: 40,
-    paddingHorizontal: 20,
-    paddingBottom: 100,
   },
   productRow: {
     justifyContent: 'space-between',

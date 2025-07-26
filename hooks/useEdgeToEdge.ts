@@ -1,60 +1,44 @@
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
+import { useEffect } from 'react';
+import * as SystemUI from 'expo-system-ui';
 
-/**
- * Hook to handle edge-to-edge display for Android 15+
- * Provides safe area insets and handles system UI visibility
- */
 export function useEdgeToEdge() {
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
+    // Configure edge-to-edge for Android 15+
     if (Platform.OS === 'android') {
-      // Enable edge-to-edge for Android 15+
-      // This is handled by the native configuration, but we can add
-      // additional JavaScript-side handling here if needed
-      console.log('Edge-to-edge enabled for Android');
+      // Enable edge-to-edge display
+      SystemUI.setBackgroundColorAsync('transparent');
+      
+      // Set navigation bar to transparent for edge-to-edge
+      if (Platform.Version >= 35) {
+        console.log('Configuring edge-to-edge for Android 15+ (SDK 35+)');
+      }
     }
   }, []);
 
   return {
     insets,
-    // Helper functions for common padding scenarios
-    paddingTop: insets.top,
-    paddingBottom: insets.bottom,
-    paddingLeft: insets.left,
-    paddingRight: insets.right,
-    // Combined horizontal and vertical padding
-    paddingHorizontal: Math.max(insets.left, insets.right),
-    paddingVertical: Math.max(insets.top, insets.bottom),
-  };
-}
-
-/**
- * Get safe area styles for common use cases
- */
-export function getSafeAreaStyles(insets: ReturnType<typeof useSafeAreaInsets>) {
-  return {
-    container: {
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    },
-    header: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    },
-    footer: {
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    },
-    content: {
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    },
+    // Helper function to get safe padding for different areas
+    getSafePadding: (area: 'top' | 'bottom' | 'left' | 'right' | 'horizontal' | 'vertical') => {
+      switch (area) {
+        case 'top':
+          return insets.top;
+        case 'bottom':
+          return insets.bottom;
+        case 'left':
+          return insets.left;
+        case 'right':
+          return insets.right;
+        case 'horizontal':
+          return Math.max(insets.left, insets.right);
+        case 'vertical':
+          return Math.max(insets.top, insets.bottom);
+        default:
+          return 0;
+      }
+    }
   };
 }

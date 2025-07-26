@@ -34,7 +34,7 @@ interface SpecialOffer {
 export default function HomeScreen() {
   const { profile, refreshProfile, user } = useAuth();
   const router = useRouter();
-  const { insets } = useEdgeToEdge();
+  const { insets, getSafePadding } = useEdgeToEdge();
   const [products, setProducts] = useState<Product[]>([]);
   const [specialOffers, setSpecialOffers] = useState<SpecialOffer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -177,13 +177,18 @@ export default function HomeScreen() {
   const currentOffer = specialOffers.length > 0 ? specialOffers[0] : null;
 
   return (
-    <SafeAreaView style={[styles.container, { paddingTop: insets.top }]} edges={['left', 'right']}>
+    <View style={[styles.container, { 
+      paddingTop: getSafePadding('top'),
+      paddingLeft: getSafePadding('left'),
+      paddingRight: getSafePadding('right')
+    }]}>
       <ScrollView 
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
+        contentContainerStyle={{ paddingBottom: getSafePadding('bottom') }}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -321,7 +326,7 @@ export default function HomeScreen() {
         }}
         onOrderSuccess={handleOrderSuccess}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
