@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -49,15 +49,15 @@ const faqData = [
   },
   {
     question: 'What payment methods do you accept?',
-    answer: 'We accept wallet payments and online payments through Paystack (cards, bank transfers, USSD).',
+    answer: 'We accept wallet payments and online payments through Paystack (cards, bank transfers, USSD) for Nigerians and Paypal for International payments.',
   },
   {
     question: 'How long does delivery take?',
-    answer: 'Delivery typically takes 3-7 business days within Lagos and 5-10 business days for other locations in Nigeria.',
+    answer: 'Delivery typically takes 3-7 business days within Lagos and 5-10 business days for other locations in Nigeria. While international delivery takes 3-4 weeks.',
   },
   {
     question: 'Can I return or exchange items?',
-    answer: 'Yes, we accept returns within 14 days of delivery. Items must be in original condition with tags attached.',
+    answer: 'Yes, we accept returns within 2 days of receiving your item(s). Item(s) must be in original condition with tags attached.',
   },
   {
     question: 'How do custom orders work?',
@@ -72,7 +72,7 @@ const contactMethods = [
     subtitle: '+234 (0) 911 016 3722',
     action: () => {
       // For web, we can't make actual calls, so show an alert
-      Alert.alert('Call Support', 'Please call +234 (0) 902 711 3199 for immediate assistance.');
+      Alert.alert('Call Support', 'Please call +234 (0) 911 016 3722 for immediate assistance.');
     },
     color: '#10B981',
   },
@@ -406,20 +406,27 @@ export default function HelpSupportScreen() {
 
         {/* Additional Resources */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Additional Resources</Text>
-          <View style={styles.resourcesContainer}>
-            <Pressable style={styles.resourceItem}>
-              <FileText size={20} color="#6B7280" />
-              <Text style={styles.resourceText}>Terms of Service</Text>
-              <ChevronRight size={16} color="#9CA3AF" />
-            </Pressable>
-            <Pressable style={styles.resourceItem}>
-              <Shield size={20} color="#6B7280" />
-              <Text style={styles.resourceText}>Privacy Policy</Text>
-              <ChevronRight size={16} color="#9CA3AF" />
-            </Pressable>
-          </View>
-        </View>
+  <Text style={styles.sectionTitle}>Additional Resources</Text>
+  <View style={styles.resourcesContainer}>
+    <Pressable
+      style={styles.resourceItem}
+      onPress={() => Linking.openURL('https://dritchwear.com/terms-of-service')}
+    >
+      <FileText size={20} color="#6B7280" />
+      <Text style={styles.resourceText}>Terms of Service</Text>
+      <ChevronRight size={16} color="#9CA3AF" />
+    </Pressable>
+
+    <Pressable
+      style={styles.resourceItem}
+      onPress={() => Linking.openURL('https://dritchwear.com/privacy-policy')}
+    >
+      <Shield size={20} color="#6B7280" />
+      <Text style={styles.resourceText}>Privacy Policy</Text>
+      <ChevronRight size={16} color="#9CA3AF" />
+    </Pressable>
+  </View>
+</View>
       </ScrollView>
 
       {/* New Ticket Modal */}
