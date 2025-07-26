@@ -15,24 +15,27 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   androidStatusBar: {
     barStyle: 'dark-content',
-    backgroundColor: '#000000', // ✅ must be a valid hex color
+    backgroundColor: '#000000',
     translucent: true,
   },
   androidNavigationBar: {
     visible: 'leanback',
     barStyle: 'dark-content',
-    backgroundColor: '#000000', // ✅ must be a valid hex color
+    backgroundColor: '#000000',
   },
   assetBundlePatterns: ['**/*'],
   ios: {
     supportsTablet: true,
   },
   android: {
+    package: 'com.dritchwear.app',           // ✅ required for EAS builds
+    versionCode: 6,                          // ✅ increment this for each new build
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#FFFFFF',
     },
-    // ✅ Removed invalid fields
+    permissions: ['NOTIFICATIONS', 'READ_MEDIA_IMAGES'],
+    supportsPictureInPicture: false,
   },
   web: {
     favicon: './assets/images/favicon.png',
