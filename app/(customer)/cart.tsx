@@ -1,53 +1,72 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { useCart, CartItem } from '@/contexts/CartContext';
-import { supabase } from '@/lib/supabase';
-import { ArrowLeft, MapPin, CreditCard, Wallet, X, Tag } from 'lucide-react-native';
-import { calculateOrderTotal } from '@/lib/fees';
+import { useCart } from '@/contexts/CartContext';
+import { ShoppingCart, Plus, Minus, Trash2, ArrowRight, Tag } from 'lucide-react-native';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
-import PaystackPayment from '@/components/PaystackPayment';
-import PayPalPayment from '@/components/PayPalPayment';
+import { supabase } from '@/lib/supabase';
 
-export default function CheckoutScreen() {
+export default function CartScreen() {
   const router = useRouter();
-  const { cartData, promoData } = useLocalSearchParams();
-  const { user, profile, refreshProfile } = useAuth();
-  const { clearCart } = useCart();
-  
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [appliedPromo, setAppliedPromo] = useState<any>(null);
-  const [deliveryAddress, setDeliveryAddress] = useState(profile?.location || '');
-  const [loading, setLoading] = useState(false);
-  const [showPaystack, setShowPaystack] = useState(false);
-  const [showPayPal, setShowPayPal] = useState(false);
-  const [orderData, setOrderData] = useState<any>(null);
-
-  useEffect(() => {
-    if (cartData) {
-      try {
-        const parsedItems = JSON.parse(cartData as string);
-        setItems(parsedItems);
-      } catch (error) {
-        console.error('Error parsing cart data:', error);
-        Alert.alert('Error', 'Invalid cart data');
-        router.back();
-      }
-    }
-
-    if (promoData) {
-      try {
-        const parsedPromo = JSON.parse(promoData as string);
-        setAppliedPromo(parsedPromo);
-      } catch (error) {
-        console.error('Error parsing promo data:', error);
-      }
-    }
-  }, [cartData, promoData]);
+  const { profile } = useAuth();
+  const { items, updateQuantity, removeItem, clearCart, getTotalItems, getSubtotal } = useCart();
+  const [promoCode, setPromoCode] = useState('');
+  const [appliedPromo, setAppliedPromo] = useState<{code: string, discount: number, description: string} | null>(null);
+  const [promoError, setPromoError] = useState('');
+  const [availablePromos, setAvailablePromos] = useState<any[]>([]);
+  const [loadingPromo, setLoadingPromo] = useState(false);
 
   const userCurrency = profile?.preferred_currency || 'NGN';
+
+  useEffect(() => {
+    const fetchPromos = async () => {
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('is_active', true);
+
+      if (!error) setAvailablePromos(data || []);
+    };
+
+    fetchPromos();
+  }, []);
+
+  const handleUpdateQuantity = async (index: number, change: number) => {
+    const newQuantity = items[index].quantity + change;
+    await updateQuantity(index, newQuantity);
+  };
+
+  const handleRemoveItem = async (index: number) => {
+    Alert.alert(
+      'Remove Item',
+      'Are you sure you want to remove this item from your cart?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => removeItem(index) }
+      ]
+    );
+  };
+
+  const handleClearCart = () => {
+    Alert.alert(
+      'Clear Cart',
+      'Are you sure you want to remove all items from your cart?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear', 
+          style: 'destructive',
+          onPress: () => {
+            clearCart();
+            setAppliedPromo(null);
+            setPromoCode('');
+          }
+        }
+      ]
+    );
+  };
 
   const getItemPriceInUserCurrency = (priceInNGN: number) => {
     if (userCurrency === 'NGN') {
@@ -56,486 +75,315 @@ export default function CheckoutScreen() {
     return convertFromNGN(priceInNGN, userCurrency);
   };
 
-  const getSubtotal = () => {
+  const getSubtotalInUserCurrency = () => {
     return items.reduce((sum, item) => {
       const itemPrice = getItemPriceInUserCurrency(item.price);
       return sum + (itemPrice * item.quantity);
     }, 0);
   };
 
-  const getSubtotalInNGN = () => {
-    return items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const handleApplyPromo = async () => {
+    const code = promoCode.trim().toUpperCase();
+  
+    if (!code) {
+      setPromoError('Please enter a promo code');
+      return;
+    }
+
+    setLoadingPromo(true);
+    setPromoError('');
+  
+    try {
+      // Fetch the promo code from the database
+      const { data, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .eq('code', code)
+        .eq('is_active', true)
+        .single();
+  
+      if (error || !data) {
+        setPromoError('Invalid or expired promo code');
+        setLoadingPromo(false);
+        return;
+      }
+  
+      // Check usage limits
+      if (data.max_uses !== null && data.current_uses >= data.max_uses) {
+        setPromoError('This promo code has reached its usage limit');
+        setLoadingPromo(false);
+        return;
+      }
+  
+      // Check date validity
+      const now = new Date();
+      if (data.start_date && new Date(data.start_date) > now) {
+        setPromoError('This promo code is not active yet');
+        setLoadingPromo(false);
+        return;
+      }
+      
+      if (data.end_date && new Date(data.end_date) < now) {
+        setPromoError('This promo code has expired');
+        setLoadingPromo(false);
+        return;
+      }
+  
+      // Check minimum order amount
+      if (data.min_order_amount && getSubtotalInUserCurrency() < convertFromNGN(data.min_order_amount, userCurrency)) {
+        setPromoError(`Minimum order of ${formatCurrency(convertFromNGN(data.min_order_amount, userCurrency), userCurrency)} required`);
+        setLoadingPromo(false);
+        return;
+      }
+  
+      // Apply the promo code
+      setAppliedPromo({
+        code: data.code,
+        discount: data.discount_percentage / 100,
+        description: data.description
+      });
+  
+      setPromoCode('');
+      Alert.alert('Promo Applied!', `${data.description} has been applied to your order.`);
+    } catch (error) {
+      console.error('Error applying promo code:', error);
+      setPromoError('Error applying promo code. Please try again.');
+    } finally {
+      setLoadingPromo(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoCode('');
+    setPromoError('');
   };
 
   const calculateDiscount = () => {
     if (!appliedPromo) return 0;
-    return getSubtotal() * appliedPromo.discount;
+    return getSubtotalInUserCurrency() * appliedPromo.discount;
   };
 
-  const getDiscountedSubtotal = () => {
-    return getSubtotal() - calculateDiscount();
+  const getFinalTotal = () => {
+    return getSubtotalInUserCurrency() - calculateDiscount();
   };
 
-  const getTotalItems = () => {
-    return items.reduce((sum, item) => sum + item.quantity, 0);
-  };
-
-  const handleOrder = async (paymentMethod: 'wallet' | 'card' | 'paypal') => {
-    if (!deliveryAddress.trim()) {
-      Alert.alert('Delivery Address Required', 'Please enter your delivery address');
+  const handleCheckout = () => {
+    if (items.length === 0) {
+      Alert.alert('Empty Cart', 'Your cart is empty. Add some items before checkout.');
       return;
     }
-
-    if (!user || !profile) {
-      Alert.alert('Authentication Required', 'Please sign in to place an order');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // Calculate totals in NGN (our base currency) with discount applied
-      const subtotalNGN = getSubtotalInNGN();
-      const discountNGN = appliedPromo ? subtotalNGN * appliedPromo.discount : 0;
-      const discountedSubtotalNGN = subtotalNGN - discountNGN;
-      
-      const orderTotals = calculateOrderTotal(discountedSubtotalNGN, deliveryAddress, 'NGN');
-
-      // For wallet payment, check balance
-      if (paymentMethod === 'wallet') {
-        if (profile.wallet_balance < orderTotals.total) {
-          const neededInUserCurrency = convertFromNGN(orderTotals.total, userCurrency);
-          const balanceInUserCurrency = convertFromNGN(profile.wallet_balance, userCurrency);
-          
-          Alert.alert(
-            'Insufficient Balance',
-            `Your wallet balance is ${formatCurrency(balanceInUserCurrency, userCurrency)}. You need ${formatCurrency(neededInUserCurrency, userCurrency)} to complete this order.`
-          );
-          setLoading(false);
-          return;
-        }
-
-        // Process wallet payment immediately
-        await processWalletPayment(orderTotals, discountNGN);
-      } else {
-        // Prepare for online payment
-        const paymentCurrency = userCurrency;
-        const paymentAmount = userCurrency === 'NGN' ? 
-          orderTotals.total : 
-          convertFromNGN(orderTotals.total, userCurrency);
-
-        const orderInfo = {
-          ...orderTotals,
-          items: items.map(item => ({
-            product_id: item.productId,
-            name: item.productName,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-          })),
-          delivery_address: deliveryAddress.trim(),
-          payment_method: paymentMethod,
-          currency: paymentCurrency,
-          original_amount: paymentAmount,
-          appliedPromo,
-          discountAmount: discountNGN,
-        };
-
-        setOrderData(orderInfo);
-
-        if (paymentMethod === 'card' && userCurrency === 'NGN') {
-          setShowPaystack(true);
-        } else if (paymentMethod === 'paypal' || userCurrency !== 'NGN') {
-          setShowPayPal(true);
-        }
+    
+    // Navigate to checkout with cart data and promo info
+    const checkoutData = {
+      items,
+      appliedPromo,
+      subtotal: getSubtotalInUserCurrency(),
+      discount: calculateDiscount(),
+      finalSubtotal: getFinalTotal()
+    };
+    
+    router.push({
+      pathname: '/(customer)/checkout',
+      params: { 
+        cartData: JSON.stringify(items),
+        promoData: appliedPromo ? JSON.stringify(appliedPromo) : undefined
       }
-    } catch (error) {
-      console.error('Error processing order:', error);
-      Alert.alert('Error', 'Failed to process order. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
-  const processWalletPayment = async (orderTotals: any, discountAmount: number) => {
-    try {
-      // Create order record with PENDING status
-      const { data: orderRecord, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user!.id,
-          items: items.map(item => ({
-            product_id: item.productId,
-            name: item.productName,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-          })),
-          subtotal: orderTotals.subtotal,
-          service_fee: orderTotals.serviceFee,
-          delivery_fee: orderTotals.deliveryFee,
-          total: orderTotals.total,
-          payment_method: 'wallet',
-          payment_status: 'paid',
-          order_status: 'pending', // ✅ Set to pending status
-          delivery_address: deliveryAddress.trim(),
-          currency: 'NGN',
-          promo_code: appliedPromo?.code || null,
-          discount_amount: discountAmount,
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Deduct from wallet
-      const { error: walletError } = await supabase
-        .from('profiles')
-        .update({
-          wallet_balance: profile!.wallet_balance - orderTotals.total
-        })
-        .eq('id', user!.id);
-
-      if (walletError) throw walletError;
-
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user!.id,
-          type: 'debit',
-          amount: orderTotals.total,
-          description: `Order payment - ${getTotalItems()} items${appliedPromo ? ` (${appliedPromo.code} applied)` : ''}`,
-          reference: orderRecord.id,
-          status: 'completed'
-        });
-
-      if (transactionError) throw transactionError;
-
-      await refreshProfile();
-      await clearCart(); // Clear cart after successful order
-      
-      Alert.alert(
-        'Order Placed Successfully',
-        'Your order has been confirmed and is now pending processing. You will receive updates as it progresses.',
-        [{ text: 'OK', onPress: () => {
-          router.replace('/(customer)/orders');
-        }}]
-      );
-    } catch (error) {
-      console.error('Error processing wallet payment:', error);
-      throw error;
-    }
-  };
-
-  const handlePaystackSuccess = async (response: any) => {
-    setShowPaystack(false);
-    await completeOnlinePayment(response.reference, 'paystack');
-  };
-
-  const handlePaystackCancel = () => {
-    setShowPaystack(false);
-    setLoading(false);
-    Alert.alert('Payment Cancelled', 'Your payment was cancelled');
-  };
-
-  const handlePayPalSuccess = async (response: any) => {
-    setShowPayPal(false);
-    await completeOnlinePayment(response.reference, 'paypal');
-  };
-
-  const handlePayPalCancel = () => {
-    setShowPayPal(false);
-    setLoading(false);
-    Alert.alert('Payment Cancelled', 'Your payment was cancelled');
-  };
-
-  const completeOnlinePayment = async (reference: string, provider: string) => {
-    try {
-      if (!orderData) throw new Error('Order data not found');
-
-      // Create order record with PENDING status
-      const { data: orderRecord, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user!.id,
-          items: orderData.items,
-          subtotal: orderData.subtotal,
-          service_fee: orderData.serviceFee,
-          delivery_fee: orderData.deliveryFee,
-          total: orderData.total,
-          payment_method: provider,
-          payment_status: 'paid',
-          order_status: 'pending', // ✅ Set to pending status
-          delivery_address: orderData.delivery_address,
-          currency: orderData.currency,
-          original_amount: orderData.original_amount,
-          promo_code: orderData.appliedPromo?.code || null,
-          discount_amount: orderData.discountAmount || 0,
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user!.id,
-          type: 'debit',
-          amount: orderData.total,
-          currency: orderData.currency,
-          original_amount: orderData.original_amount,
-          description: `Order payment - ${getTotalItems()} items${orderData.appliedPromo ? ` (${orderData.appliedPromo.code} applied)` : ''}`,
-          reference: reference,
-          status: 'completed',
-          payment_provider: provider
-        });
-
-      if (transactionError) throw transactionError;
-
-      await clearCart(); // Clear cart after successful order
-
-      Alert.alert(
-        'Order Placed Successfully',
-        `Your payment of ${formatCurrency(orderData.original_amount, orderData.currency)} has been processed. Your order is now pending and will be processed soon!`,
-        [{ text: 'OK', onPress: () => {
-          router.replace('/(customer)/orders');
-        }}]
-      );
-    } catch (error) {
-      console.error('Error completing online payment:', error);
-      Alert.alert('Error', 'Payment was successful but failed to create order. Please contact support.');
-    }
-  };
-
-  // Calculate order totals for display with discount
-  const subtotalNGN = getSubtotalInNGN();
-  const discountNGN = appliedPromo ? subtotalNGN * appliedPromo.discount : 0;
-  const discountedSubtotalNGN = subtotalNGN - discountNGN;
-  const orderTotals = calculateOrderTotal(discountedSubtotalNGN, deliveryAddress, 'NGN');
-  
-  // Convert to user currency for display
-  const displayTotals = {
-    subtotal: userCurrency === 'NGN' ? subtotalNGN : convertFromNGN(subtotalNGN, userCurrency),
-    discount: userCurrency === 'NGN' ? discountNGN : convertFromNGN(discountNGN, userCurrency),
-    serviceFee: userCurrency === 'NGN' ? orderTotals.serviceFee : convertFromNGN(orderTotals.serviceFee, userCurrency),
-    deliveryFee: userCurrency === 'NGN' ? orderTotals.deliveryFee : convertFromNGN(orderTotals.deliveryFee, userCurrency),
-    total: userCurrency === 'NGN' ? orderTotals.total : convertFromNGN(orderTotals.total, userCurrency),
-  };
+  if (items.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Shopping Cart</Text>
+        </View>
+        
+        <View style={styles.emptyContainer}>
+          <ShoppingCart size={80} color="#D1D5DB" />
+          <Text style={styles.emptyTitle}>Your cart is empty</Text>
+          <Text style={styles.emptySubtitle}>
+            Add some items to your cart to get started
+          </Text>
+          <Pressable 
+            style={styles.shopButton}
+            onPress={() => router.push('/(customers)/shop')}
+          >
+            <Text style={styles.shopButtonText}>Start Shopping</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <>
-      <SafeAreaView style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={() => router.back()}>
-            <ArrowLeft size={24} color="#1F2937" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Checkout</Text>
-          <View style={styles.placeholder} />
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Shopping Cart</Text>
+        <Pressable onPress={handleClearCart}>
+          <Text style={styles.clearText}>Clear All</Text>
+        </Pressable>
+      </View>
+
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        {/* Cart Items */}
+        <View style={styles.itemsContainer}>
+          <Text style={styles.itemsTitle}>
+            {getTotalItems()} {getTotalItems() === 1 ? 'Item' : 'Items'}
+          </Text>
+          
+          {items.map((item, index) => (
+            <View key={`${item.productId}-${item.size}-${item.color}`} style={styles.cartItem}>
+              <Image
+                source={{ uri: item.productImage }}
+                style={styles.itemImage}
+                resizeMode="cover"
+              />
+              
+              <View style={styles.itemDetails}>
+                <Text style={styles.itemName}>{item.productName}</Text>
+                <Text style={styles.itemVariant}>
+                  Size: {item.size} • Color: {item.color}
+                </Text>
+                <Text style={styles.itemPrice}>
+                  {formatCurrency(getItemPriceInUserCurrency(item.price), userCurrency)}
+                </Text>
+              </View>
+              
+              <View style={styles.itemActions}>
+                <View style={styles.quantityControls}>
+                  <Pressable
+                    style={styles.quantityButton}
+                    onPress={() => handleUpdateQuantity(index, -1)}
+                  >
+                    <Minus size={16} color="#7C3AED" />
+                  </Pressable>
+                  <Text style={styles.quantityText}>{item.quantity}</Text>
+                  <Pressable
+                    style={styles.quantityButton}
+                    onPress={() => handleUpdateQuantity(index, 1)}
+                  >
+                    <Plus size={16} color="#7C3AED" />
+                  </Pressable>
+                </View>
+                
+                <Pressable
+                  style={styles.removeButton}
+                  onPress={() => handleRemoveItem(index)}
+                >
+                  <Trash2 size={16} color="#EF4444" />
+                </Pressable>
+              </View>
+            </View>
+          ))}
         </View>
 
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          {/* Order Summary */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Order Summary</Text>
-            <View style={styles.summaryCard}>
-              <Text style={styles.itemsCount}>
-                {getTotalItems()} {getTotalItems() === 1 ? 'Item' : 'Items'}
-              </Text>
-              
-              {items.slice(0, 3).map((item, index) => (
-                <View key={index} style={styles.summaryItem}>
-                  <Text style={styles.summaryItemName}>
-                    {item.productName} ({item.size}, {item.color})
-                  </Text>
-                  <Text style={styles.summaryItemPrice}>
-                    {item.quantity}x {formatCurrency(getItemPriceInUserCurrency(item.price), userCurrency)}
-                  </Text>
+        {/* Promo Code Section */}
+        <View style={styles.promoSection}>
+          <Text style={styles.promoTitle}>Promo Code</Text>
+          
+          {appliedPromo ? (
+            <View style={styles.appliedPromoCard}>
+              <View style={styles.appliedPromoInfo}>
+                <Tag size={16} color="#10B981" />
+                <View style={styles.appliedPromoText}>
+                  <Text style={styles.appliedPromoCode}>{appliedPromo.code}</Text>
+                  <Text style={styles.appliedPromoDescription}>{appliedPromo.description}</Text>
                 </View>
-              ))}
-              
-              {items.length > 3 && (
-                <Text style={styles.moreItems}>
-                  +{items.length - 3} more items
-                </Text>
-              )}
-
-              {/* Applied Promo Display */}
-              {appliedPromo && (
-                <View style={styles.promoDisplay}>
-                  <Text style={styles.promoDisplayText}>
-                    🎉 {appliedPromo.code} applied: {appliedPromo.description}
-                  </Text>
-                </View>
-              )}
+              </View>
+              <Pressable style={styles.removePromoButton} onPress={handleRemovePromo}>
+                <Text style={styles.removePromoText}>Remove</Text>
+              </Pressable>
             </View>
-          </View>
-
-          {/* Delivery Address */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Delivery Address</Text>
-            <View style={styles.addressCard}>
-              <MapPin size={20} color="#7C3AED" />
+          ) : (
+            <View style={styles.promoContainer}>
               <TextInput
-                style={styles.addressInput}
-                value={deliveryAddress}
-                onChangeText={setDeliveryAddress}
-                placeholder="Enter your delivery address"
+                style={[styles.promoInput, promoError && styles.promoInputError]}
+                value={promoCode}
+                onChangeText={(text) => {
+                  setPromoCode(text);
+                  if (promoError) setPromoError('');
+                }}
+                placeholder="Enter promo code"
                 placeholderTextColor="#9CA3AF"
-                multiline
-                numberOfLines={3}
+                autoCapitalize="characters"
               />
+              <Pressable 
+                style={[styles.promoButton, loadingPromo && styles.promoButtonDisabled]} 
+                onPress={handleApplyPromo}
+                disabled={loadingPromo}
+              >
+                <Text style={styles.promoButtonText}>
+                  {loadingPromo ? 'Applying...' : 'Apply'}
+                </Text>
+              </Pressable>
             </View>
-          </View>
-
-          {/* Order Totals */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Order Total</Text>
-            <View style={styles.totalsCard}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Subtotal</Text>
-                <Text style={styles.totalValue}>
-                  {formatCurrency(displayTotals.subtotal, userCurrency)}
-                </Text>
-              </View>
-
-              {appliedPromo && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>Discount ({appliedPromo.code})</Text>
-                  <Text style={styles.discountValue}>
-                    -{formatCurrency(displayTotals.discount, userCurrency)}
-                  </Text>
-                </View>
-              )}
-              
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Service Fee (2%)</Text>
-                <Text style={styles.totalValue}>
-                  {formatCurrency(displayTotals.serviceFee, userCurrency)}
-                </Text>
-              </View>
-              
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Delivery Fee</Text>
-                <Text style={styles.totalValue}>
-                  {formatCurrency(displayTotals.deliveryFee, userCurrency)}
-                </Text>
-              </View>
-              
-              <View style={[styles.totalRow, styles.finalTotal]}>
-                <Text style={styles.finalTotalLabel}>Total</Text>
-                <Text style={styles.finalTotalValue}>
-                  {formatCurrency(displayTotals.total, userCurrency)}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Payment Methods */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Payment Method</Text>
-            
-            {/* Wallet Payment */}
-            <Pressable
-              style={styles.paymentButton}
-              onPress={() => handleOrder('wallet')}
-              disabled={loading}
-            >
-              <Wallet size={20} color="#FFFFFF" />
-              <Text style={styles.paymentButtonText}>
-                Pay with Wallet ({formatCurrency(convertFromNGN(profile?.wallet_balance || 0, userCurrency), userCurrency)})
+          )}
+          
+          {promoError ? (
+            <Text style={styles.promoError}>{promoError}</Text>
+          ) : null}
+          
+          {!appliedPromo && availablePromos.length > 0 && (
+            <View style={styles.promoHint}>
+              <Text style={styles.promoHintText}>
+                Available codes: {availablePromos.slice(0, 3).map(p => p.code).join(', ')}
+                {availablePromos.length > 3 ? ' and more' : ''}
               </Text>
-            </Pressable>
+            </View>
+          )}
+        </View>
 
-            {/* Card Payment (Paystack for NGN) */}
-            {userCurrency === 'NGN' && (
-              <Pressable
-                style={[styles.paymentButton, styles.paystackButton]}
-                onPress={() => handleOrder('card')}
-                disabled={loading}
-              >
-                <CreditCard size={20} color="#FFFFFF" />
-                <Text style={styles.paymentButtonText}>Pay with Card (Paystack)</Text>
-              </Pressable>
-            )}
-
-            {/* PayPal Payment (for international currencies) */}
-            {userCurrency !== 'NGN' && (
-              <Pressable
-                style={[styles.paymentButton, styles.paypalButton]}
-                onPress={() => handleOrder('paypal')}
-                disabled={loading}
-              >
-                <CreditCard size={20} color="#FFFFFF" />
-                <Text style={styles.paymentButtonText}>Pay with PayPal</Text>
-              </Pressable>
-            )}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-
-      {/* Paystack Payment Modal */}
-      <Modal
-        visible={showPaystack}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handlePaystackCancel}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Complete Payment</Text>
-            <Pressable style={styles.closeButton} onPress={handlePaystackCancel}>
-              <X size={24} color="#1F2937" />
-            </Pressable>
+        {/* Order Summary */}
+        <View style={styles.summarySection}>
+          <Text style={styles.summaryTitle}>Order Summary</Text>
+          
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Subtotal</Text>
+            <Text style={styles.summaryValue}>
+              {formatCurrency(getSubtotalInUserCurrency(), userCurrency)}
+            </Text>
           </View>
           
-          {showPaystack && orderData && user && (
-            <PaystackPayment
-              email={user.email || ''}
-              amount={orderData.total}
-              publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
-              customerName={user.user_metadata?.full_name || 'Customer'}
-              onSuccess={handlePaystackSuccess}
-              onCancel={handlePaystackCancel}
-            />
+          {appliedPromo && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Discount ({appliedPromo.code})</Text>
+              <Text style={styles.discountValue}>
+                -{formatCurrency(calculateDiscount(), userCurrency)}
+              </Text>
+            </View>
           )}
-        </SafeAreaView>
-      </Modal>
-
-      {/* PayPal Payment Modal */}
-      <Modal
-        visible={showPayPal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handlePayPalCancel}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Complete Payment</Text>
-            <Pressable style={styles.closeButton} onPress={handlePayPalCancel}>
-              <X size={24} color="#1F2937" />
-            </Pressable>
+          
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Delivery</Text>
+            <Text style={styles.summaryNote}>Calculated at checkout</Text>
           </View>
           
-          {showPayPal && orderData && user && (
-            <PayPalPayment
-              email={user.email || ''}
-              amount={orderData.original_amount}
-              currency={orderData.currency}
-              customerName={user.user_metadata?.full_name || 'Customer'}
-              description={`Dritchwear Order - ${getTotalItems()} items`}
-              onSuccess={handlePayPalSuccess}
-              onCancel={handlePayPalCancel}
-            />
-          )}
-        </SafeAreaView>
-      </Modal>
-    </>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Service Fee</Text>
+            <Text style={styles.summaryNote}>Calculated at checkout</Text>
+          </View>
+          
+          <View style={[styles.summaryRow, styles.totalRow]}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalValue}>
+              {formatCurrency(getFinalTotal(), userCurrency)}+
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Checkout Button */}
+      <View style={styles.checkoutSection}>
+        <Pressable style={styles.checkoutButton} onPress={handleCheckout}>
+          <Text style={styles.checkoutButtonText}>
+            Proceed to Checkout
+          </Text>
+          <ArrowRight size={20} color="#FFFFFF" />
+        </Pressable>
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -546,139 +394,264 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 24,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
   },
-  placeholder: {
-    width: 40,
+  clearText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#EF4444',
   },
   scrollView: {
     flex: 1,
   },
-  section: {
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: '#1F2937',
+    marginTop: 20,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  shopButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  shopButtonText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  itemsContainer: {
     paddingHorizontal: 20,
     marginBottom: 24,
   },
-  sectionTitle: {
+  itemsTitle: {
     fontSize: 18,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  summaryCard: {
+  cartItem: {
+    flexDirection: 'row',
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
-  itemsCount: {
+  itemImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 12,
+  },
+  itemDetails: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  itemVariant: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  itemPrice: {
+    fontSize: 16,
+    fontFamily: 'Inter-Bold',
+    color: '#7C3AED',
+  },
+  itemActions: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quantityButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: '#7C3AED',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quantityText: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  removeButton: {
+    padding: 8,
+  },
+  promoSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  promoTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
     marginBottom: 12,
   },
-  summaryItem: {
+  promoContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
+    gap: 12,
   },
-  summaryItemName: {
+  promoInput: {
     flex: 1,
-    fontSize: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
     fontFamily: 'Inter-Regular',
-    color: '#6B7280',
-  },
-  summaryItemPrice: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
   },
-  moreItems: {
-    fontSize: 14,
-    fontFamily: 'Inter-Regular',
-    color: '#9CA3AF',
-    fontStyle: 'italic',
+  promoInputError: {
+    borderColor: '#EF4444',
   },
-  promoDisplay: {
-    marginTop: 12,
-    padding: 8,
+  promoButton: {
+    backgroundColor: '#7C3AED',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    justifyContent: 'center',
+  },
+  promoButtonDisabled: {
+    opacity: 0.6,
+  },
+  promoButtonText: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#FFFFFF',
+  },
+  promoError: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#EF4444',
+    marginTop: 6,
+  },
+  promoHint: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+  },
+  promoHintText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  appliedPromoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#D1FAE5',
-    borderRadius: 6,
+    borderRadius: 8,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#10B981',
   },
-  promoDisplayText: {
+  appliedPromoInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  appliedPromoText: {
+    marginLeft: 8,
+    flex: 1,
+  },
+  appliedPromoCode: {
+    fontSize: 14,
+    fontFamily: 'Inter-SemiBold',
+    color: '#10B981',
+  },
+  appliedPromoDescription: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#059669',
+  },
+  removePromoButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+  },
+  removePromoText: {
     fontSize: 12,
     fontFamily: 'Inter-SemiBold',
-    color: '#059669',
-    textAlign: 'center',
+    color: '#EF4444',
   },
-  addressCard: {
-    flexDirection: 'row',
+  summarySection: {
     backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    alignItems: 'flex-start',
   },
-  addressInput: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    fontFamily: 'Inter-Regular',
+  summaryTitle: {
+    fontSize: 18,
+    fontFamily: 'Inter-Bold',
     color: '#1F2937',
-    minHeight: 60,
-    textAlignVertical: 'top',
+    marginBottom: 16,
   },
-  totalsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  totalRow: {
+  summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
-  totalLabel: {
+  summaryLabel: {
     fontSize: 16,
     fontFamily: 'Inter-Regular',
     color: '#6B7280',
   },
-  totalValue: {
+  summaryValue: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#1F2937',
@@ -688,68 +661,47 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#10B981',
   },
-  finalTotal: {
+  summaryNote: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  totalRow: {
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     paddingTop: 12,
     marginTop: 8,
     marginBottom: 0,
   },
-  finalTotalLabel: {
+  totalLabel: {
     fontSize: 18,
     fontFamily: 'Inter-Bold',
     color: '#1F2937',
   },
-  finalTotalValue: {
+  totalValue: {
     fontSize: 18,
     fontFamily: 'Inter-Bold',
     color: '#7C3AED',
   },
-  paymentButton: {
+  checkoutSection: {
+    padding: 20,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  checkoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#7C3AED',
     borderRadius: 12,
     paddingVertical: 16,
-    marginBottom: 12,
     gap: 8,
   },
-  paystackButton: {
-    backgroundColor: '#00C851',
-  },
-  paypalButton: {
-    backgroundColor: '#0070BA',
-  },
-  paymentButtonText: {
+  checkoutButtonText: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontFamily: 'Inter-Bold',
-    color: '#1F2937',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

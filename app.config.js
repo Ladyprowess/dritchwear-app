@@ -35,7 +35,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundColor: '#FFFFFF',
     },
     permissions: ['NOTIFICATIONS', 'READ_MEDIA_IMAGES'],
-    supportsPictureInPicture: false,
   },
   web: {
     favicon: './assets/images/favicon.png',
