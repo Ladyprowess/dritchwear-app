@@ -21,6 +21,8 @@ interface Product {
   sizes: string[];
   colors: string[];
   stock: number;
+  total_reviews?: number;
+  average_rating?: number;
 }
 
 const categories = ['All', 'T-Shirts', 'Hoodies', 'Polos', 'Joggers', 'Casuals', 'Merchandise', 'Accessories'];
@@ -43,18 +45,39 @@ export default function ShopScreen() {
   const [minPrice, setMinPrice] = useState<number | null>(null);
 
   const fetchProducts = async () => {
-    const { data } = await supabase
+    setLoading(true);
+  
+    const { data: productsData, error: productError } = await supabase
       .from('products')
       .select('*')
       .eq('is_active', true)
       .order('created_at', { ascending: false });
-    
-    if (data) {
-      setProducts(data);
-      setFilteredProducts(data);
+  
+    const { data: ratingsData, error: ratingError } = await supabase
+      .from('product_rating_summaries')
+      .select('product_id, total_reviews, average_rating');
+  
+    if (productError || ratingError) {
+      console.error('Error fetching products or ratings:', productError || ratingError);
+      setLoading(false);
+      return;
     }
+  
+    // Merge review data into each product
+    const merged = productsData.map(product => {
+      const rating = ratingsData?.find(r => r.product_id === product.id);
+      return {
+        ...product,
+        total_reviews: rating?.total_reviews || 0,
+        average_rating: rating?.average_rating || 0
+      };
+    });
+  
+    setProducts(merged);
+    setFilteredProducts(merged);
     setLoading(false);
   };
+  
 
   useEffect(() => {
     fetchProducts();
@@ -135,9 +158,22 @@ export default function ShopScreen() {
               {formatCurrency(productPrice, userCurrency)}
             </Text>
             <View style={styles.ratingContainer}>
-              <Star size={12} color="#E5E7EB" fill="#E5E7EB" />
-              <Text style={styles.ratingText}>No reviews</Text>
-            </View>
+            <Star
+  size={12}
+  color="#E5E7EB"
+  fill={
+    product.total_reviews && product.total_reviews > 0
+      ? '#F59E0B' // gold fill if reviews exist
+      : '#E5E7EB' // gray fill if no reviews
+  }
+/>
+<Text style={styles.ratingText}>
+  {product.total_reviews && product.total_reviews > 0
+    ? `${product.average_rating?.toFixed(1)} (${product.total_reviews})`
+    : 'No reviews'}
+</Text>
+</View>
+
           </View>
           <View style={styles.productVariants}>
             <View style={styles.sizesContainer}>

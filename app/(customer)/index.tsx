@@ -22,6 +22,9 @@ interface Product {
   sizes: string[];
   colors: string[];
   stock: number;
+  total_reviews?: number;
+average_rating?: number;
+
 }
 
 interface SpecialOffer {
@@ -56,10 +59,11 @@ export default function HomeScreen() {
       }
 
       const { data, error } = await supabase
-        .from('products')
-        .select('id, name, description, price, image_url, category, sizes, colors, stock')
-        .eq('is_active', true)
-        .limit(6);
+  .from('product_card_data')
+  .select('*')
+  .eq('is_active', true)
+  .limit(6);
+
       
       if (error) {
         console.error('Error fetching products:', error);
@@ -261,8 +265,21 @@ export default function HomeScreen() {
                     <Text style={styles.productPrice}>{formatProductPrice(item.price)}</Text>
                     <View style={styles.productFooter}>
                     <View style={styles.ratingContainer}>
-                      <Star size={12} color="#E5E7EB" fill="#E5E7EB" />
-                      <Text style={styles.ratingText}>No reviews</Text>
+                    <Star
+  size={12}
+  color="#E5E7EB"
+  fill={
+    item.total_reviews && item.total_reviews > 0
+      ? '#F59E0B'
+      : '#E5E7EB'
+  }
+/>
+<Text style={styles.ratingText}>
+  {item.total_reviews && item.total_reviews > 0
+    ? `${item.average_rating?.toFixed(1)} (${item.total_reviews})`
+    : 'No reviews'}
+</Text>
+
                     </View>
                       <Text style={styles.categoryText}>{item.category}</Text>
                     </View>
