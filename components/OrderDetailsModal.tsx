@@ -4,10 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Package, Calendar, MapPin, CreditCard, User, Send, DollarSign, CheckCircle, XCircle, Globe, Tag, Building, Palette, Target, FileText } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import ProductReviews from './ProductReviews';
 import { formatCurrency, convertFromNGN, convertToNGN } from '@/lib/currency';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
-
 
 interface OrderItem {
   product_id: string;
@@ -47,7 +47,7 @@ interface Order {
   quantity?: number;
   budget_range?: string;
   status?: string;
-  invoice_sent?: boolean; // NEW: Track if invoice has been sent
+  invoice_sent?: boolean;
   invoices?: Invoice[];
   // Enhanced custom order fields
   business_name?: string;
@@ -86,9 +86,10 @@ const customStatusOptions = [
 ];
 
 export default function OrderDetailsModal({ order, visible, onClose, onOrderUpdate }: OrderDetailsModalProps) {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin, profile, user } = useAuth();
   const [updating, setUpdating] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [reviewRefreshKey, setReviewRefreshKey] = useState(0);
 
   const downloadImage = async (imageUrl: string) => {
     const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -122,6 +123,8 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
   const isCustomOrder = !order.items;
   const currentStatus = isCustomOrder ? order.status : order.order_status;
   
+  // Check if customer can write reviews (non-admin users with delivered orders)
+  const canWriteReviews = !isAdmin && !isCustomOrder && order.order_status === 'delivered';
 
   // FIXED: Determine the actual payment currency used
   const getActualPaymentCurrency = () => {
@@ -262,7 +265,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
       return;
     }
 
-    // NEW: Check if invoice has already been sent
+    // Check if invoice has already been sent
     if (order.invoice_sent) {
       Alert.alert(
         'Invoice Already Sent', 
@@ -272,7 +275,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
       return;
     }
 
-    // NEW: Check if an invoice already exists (database constraint backup)
+    // Check if an invoice already exists (database constraint backup)
     if (order.invoices && order.invoices.length > 0) {
       Alert.alert(
         'Invoice Already Exists', 
@@ -289,7 +292,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         amountInCustomerCurrency : 
         convertToNGN(amountInCustomerCurrency, actualPaymentCurrency);
 
-      // NEW: Use a transaction to ensure atomicity
+      // Use a transaction to ensure atomicity
       const { error: invoiceError } = await supabase
         .from('invoices')
         .insert({
@@ -315,12 +318,12 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
         throw invoiceError;
       }
 
-      // NEW: Update custom request to mark invoice as sent and update status
+      // Update custom request to mark invoice as sent and update status
       const { error: statusError } = await supabase
         .from('custom_requests')
         .update({ 
           status: 'quoted',
-          invoice_sent: true // NEW: Mark invoice as sent
+          invoice_sent: true
         })
         .eq('id', order.id);
 
@@ -365,7 +368,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
     }
   };
 
-  // NEW: Check if invoice can be sent
+  // Check if invoice can be sent
   const canSendInvoice = () => {
     if (!isAdmin || !isCustomOrder) return false;
     if (['completed', 'cancelled', 'rejected'].includes(currentStatus || '')) return false;
@@ -451,26 +454,25 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </View>
                 )}
 
-                {/* NEW: Show invoice status for custom orders */}
+                {/* Show invoice status for custom orders */}
                 {isCustomOrder && (
-  <View style={styles.infoRow}>
-    <Send size={20} color="#6B7280" />
-    <View style={styles.infoContent}>
-      <Text style={styles.infoLabel}>Invoice Status</Text>
-      <Text
-        style={[
-          styles.infoValue,
-          { color: (order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? '#10B981' : '#F59E0B' }
-        ]}
-      >
-        {(order.invoice_sent || (order.invoices && order.invoices.length > 0))
-          ? isAdmin ? 'Invoice Sent' : 'Invoice Received'
-          : 'No Invoice Yet'}
-      </Text>
-    </View>
-  </View>
-)}
-
+                  <View style={styles.infoRow}>
+                    <Send size={20} color="#6B7280" />
+                    <View style={styles.infoContent}>
+                      <Text style={styles.infoLabel}>Invoice Status</Text>
+                      <Text
+                        style={[
+                          styles.infoValue,
+                          { color: (order.invoice_sent || (order.invoices && order.invoices.length > 0)) ? '#10B981' : '#F59E0B' }
+                        ]}
+                      >
+                        {(order.invoice_sent || (order.invoices && order.invoices.length > 0))
+                          ? isAdmin ? 'Invoice Sent' : 'Invoice Received'
+                          : 'No Invoice Yet'}
+                      </Text>
+                    </View>
+                  </View>
+                )}
 
                 {!isCustomOrder && order.delivery_address && (
                   <View style={styles.infoRow}>
@@ -556,24 +558,23 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                       )}
                       
                       {order.logo_url && (
-  <View style={styles.detailRow}>
-    <FileText size={16} color="#6B7280" />
-    <View style={styles.detailContent}>
-      <Text style={styles.detailLabel}>Logo</Text>
-      <Image 
-        source={{ uri: order.logo_url }}
-        style={{ width: 80, height: 80, borderRadius: 8, marginTop: 6, backgroundColor: '#F3F4F6' }}
-        resizeMode="contain"
-      />
-      <Pressable onPress={() => downloadImage(order.logo_url)} style={{ marginTop: 6 }}>
-        <Text style={{ color: '#7C3AED', fontSize: 13, fontWeight: '600' }}>
-          Download Logo
-        </Text>
-      </Pressable>
-    </View>
-  </View>
-)}
-
+                        <View style={styles.detailRow}>
+                          <FileText size={16} color="#6B7280" />
+                          <View style={styles.detailContent}>
+                            <Text style={styles.detailLabel}>Logo</Text>
+                            <Image 
+                              source={{ uri: order.logo_url }}
+                              style={{ width: 80, height: 80, borderRadius: 8, marginTop: 6, backgroundColor: '#F3F4F6' }}
+                              resizeMode="contain"
+                            />
+                            <Pressable onPress={() => downloadImage(order.logo_url)} style={{ marginTop: 6 }}>
+                              <Text style={{ color: '#7C3AED', fontSize: 13, fontWeight: '600' }}>
+                                Download Logo
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      )}
                       
                       {order.brand_colors && order.brand_colors.length > 0 && (
                         <View style={styles.detailRow}>
@@ -669,14 +670,14 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   </Pressable>
                 )}
 
-                {/* NEW: Show message if invoice already sent */}
+                {/* Show message if invoice already sent */}
                 {isAdmin && isCustomOrder && (order.invoice_sent || (order.invoices && order.invoices.length > 0)) && (
-  <View style={styles.invoiceAlreadySentCard}>
-    <CheckCircle size={20} color="#10B981" />
-    <Text style={styles.invoiceAlreadySentText}>
-      Invoice has already been sent for this order
-    </Text>
-  </View>
+                  <View style={styles.invoiceAlreadySentCard}>
+                    <CheckCircle size={20} color="#10B981" />
+                    <Text style={styles.invoiceAlreadySentText}>
+                      Invoice has already been sent for this order
+                    </Text>
+                  </View>
                 )}
               </View>
             ) : (
@@ -757,6 +758,35 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                     </View>
                   </View>
                 </View>
+
+                {/* Product Reviews Section - For delivered regular orders */}
+{(!isCustomOrder && order.order_status === 'delivered') && (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Product Reviews</Text>
+<Text style={styles.reviewsSubtitle}>
+  {isAdmin ? 'Manage product reviews for this order' : 'Share your experience with these products to help other customers'}
+</Text>
+                    {order.items?.map((item, index) => (
+                      <View key={index} style={styles.reviewSection}>
+                        <View style={styles.reviewProductHeader}>
+                          <Text style={styles.reviewProductName}>{item.name}</Text>
+                          <Text style={styles.reviewProductDetails}>
+                            Size: {item.size} • Color: {item.color} • Qty: {item.quantity}
+                          </Text>
+                        </View>
+                        <ProductReviews 
+  key={`review-${item.product_id}-${reviewRefreshKey}`}
+  productId={item.product_id} 
+  onReviewsUpdate={() => setReviewRefreshKey(prev => prev + 1)}
+  showAddReview={!isAdmin}
+  currentUserId={user?.id}
+  isAdminUser={isAdmin}
+/>
+
+                      </View>
+                    ))}
+                  </View>
+                )}
               </>
             )}
           </ScrollView>
@@ -799,7 +829,7 @@ export default function OrderDetailsModal({ order, visible, onClose, onOrderUpda
                   💡 Invoice will be sent in payment currency: {actualPaymentCurrency}
                 </Text>
 
-                {/* NEW: Warning about single invoice policy */}
+                {/* Warning about single invoice policy */}
                 <View style={styles.warningCard}>
                   <Text style={styles.warningText}>
                     ⚠️ Only one invoice can be sent per custom order. Please ensure all details are correct before sending.
@@ -952,6 +982,39 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
+  reviewsSubtitle: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  reviewProductHeader: {
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  reviewProductDetails: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  reviewSection: {
+    marginBottom: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+  },
+  reviewProductName: {
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+  },
   customOrderTitle: {
     fontSize: 16,
     fontFamily: 'Inter-SemiBold',
@@ -1064,7 +1127,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     color: '#FFFFFF',
   },
-  // NEW: Invoice already sent card styles
   invoiceAlreadySentCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1237,7 +1299,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
   },
-  // NEW: Warning card styles
   warningCard: {
     backgroundColor: '#FEF3C7',
     borderRadius: 8,
@@ -1267,20 +1328,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter-SemiBold',
     color: '#6B7280',
-  },
-  completeOrderButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#059669',
-    borderRadius: 8,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  completeOrderButtonText: {
-    fontSize: 14,
-    fontFamily: 'Inter-SemiBold',
-    color: '#FFFFFF',
   },
   invoiceModalSend: {
     flex: 1,

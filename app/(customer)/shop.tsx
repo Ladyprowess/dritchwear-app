@@ -135,8 +135,8 @@ export default function ShopScreen() {
               {formatCurrency(productPrice, userCurrency)}
             </Text>
             <View style={styles.ratingContainer}>
-              <Star size={12} color="#F59E0B" fill="#F59E0B" />
-              <Text style={styles.ratingText}>4.8</Text>
+              <Star size={12} color="#E5E7EB" fill="#E5E7EB" />
+              <Text style={styles.ratingText}>No reviews</Text>
             </View>
           </View>
           <View style={styles.productVariants}>

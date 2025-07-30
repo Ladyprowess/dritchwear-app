@@ -7,6 +7,7 @@ import { useCart } from '@/contexts/CartContext';
 import { useRouter } from 'expo-router';
 import { convertFromNGN, formatCurrency } from '@/lib/currency';
 import { supabase } from '@/lib/supabase';
+import ProductReviews from './ProductReviews';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -37,6 +38,11 @@ interface ProductModalProps {
   onOrderSuccess: () => void;
 }
 
+interface ReviewStats {
+  averageRating: number;
+  totalReviews: number;
+}
+
 export default function ProductModal({ product, visible, onClose, onOrderSuccess }: ProductModalProps) {
   const { profile } = useAuth();
   const { addToCart } = useCart();
@@ -49,11 +55,14 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
   const [productImages, setProductImages] = useState<ProductImage[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [imagesLoading, setImagesLoading] = useState(false);
+  const [reviewStats, setReviewStats] = useState<ReviewStats>({ averageRating: 0, totalReviews: 0 });
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   // Fetch product images when modal opens
   useEffect(() => {
     if (visible && product) {
       fetchProductImages();
+      fetchReviewStats();
     }
   }, [visible, product]);
 
@@ -97,12 +106,43 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
     }
   };
 
+  const fetchReviewStats = async () => {
+    if (!product) return;
+    
+    setReviewsLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('rating')
+        .eq('product_id', product.id);
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const totalRating = data.reduce((sum, review) => sum + review.rating, 0);
+        const averageRating = totalRating / data.length;
+        setReviewStats({
+          averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal place
+          totalReviews: data.length
+        });
+      } else {
+        setReviewStats({ averageRating: 0, totalReviews: 0 });
+      }
+    } catch (error) {
+      console.error('Error fetching review stats:', error);
+      setReviewStats({ averageRating: 0, totalReviews: 0 });
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
   const resetModal = () => {
     setSelectedSizes([]);
     setSelectedColors([]);
     setQuantity(1);
     setCurrentImageIndex(0);
     setProductImages([]);
+    setReviewStats({ averageRating: 0, totalReviews: 0 });
   };
 
   const handleClose = () => {
@@ -262,6 +302,34 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
   const sizesAvailable = product?.sizes && product.sizes.length > 0;
   const colorsAvailable = product?.colors && product.colors.length > 0;
 
+  // Render star rating
+  const renderStarRating = (rating: number) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 !== 0;
+    
+    for (let i = 0; i < fullStars; i++) {
+      stars.push(
+        <Star key={i} size={16} color="#F59E0B" fill="#F59E0B" />
+      );
+    }
+    
+    if (hasHalfStar) {
+      stars.push(
+        <Star key="half" size={16} color="#F59E0B" fill="#F59E0B" opacity={0.5} />
+      );
+    }
+    
+    const emptyStars = 5 - Math.ceil(rating);
+    for (let i = 0; i < emptyStars; i++) {
+      stars.push(
+        <Star key={`empty-${i}`} size={16} color="#E5E7EB" fill="#E5E7EB" />
+      );
+    }
+    
+    return stars;
+  };
+
   return (
     <Modal
       visible={visible}
@@ -345,8 +413,21 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                 </Text>
                 
                 <View style={styles.ratingContainer}>
-                  <Star size={16} color="#F59E0B" fill="#F59E0B" />
-                  <Text style={styles.ratingText}>4.8 (124 reviews)</Text>
+                  {reviewStats.totalReviews > 0 ? (
+                    <>
+                      <View style={styles.starRating}>
+                        {renderStarRating(reviewStats.averageRating)}
+                      </View>
+                      <Text style={styles.ratingText}>
+                        {reviewStats.averageRating} ({reviewStats.totalReviews} review{reviewStats.totalReviews !== 1 ? 's' : ''})
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Star size={16} color="#E5E7EB" fill="#E5E7EB" />
+                      <Text style={styles.ratingText}>No reviews yet</Text>
+                    </>
+                  )}
                 </View>
 
                 <Text style={styles.productDescription}>{product.description}</Text>
@@ -466,6 +547,17 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                   </Text>
                 </View>
               )}
+
+              {/* Product Reviews */}
+              <View style={styles.reviewsSection}>
+                <ProductReviews 
+                  productId={product.id} 
+                  onReviewsUpdate={() => {
+                    // Refresh review stats when reviews are updated
+                    fetchReviewStats();
+                  }}
+                />
+              </View>
             </ScrollView>
 
             {/* Add to Cart Button */}
@@ -504,7 +596,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                   })`}
                 </Text>
               </Pressable>
-              </View>
+            </View>
           </>
         )}
       </SafeAreaView>
@@ -613,10 +705,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     gap: 4,
   },
+  starRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
   ratingText: {
     fontSize: 14,
     fontFamily: 'Inter-Medium',
     color: '#6B7280',
+    marginLeft: 4,
   },
   productDescription: {
     fontSize: 16,
@@ -718,6 +816,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: 'Inter-Bold',
     color: '#7C3AED',
+  },
+  reviewsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
   },
   bottomSection: {
     padding: 20,

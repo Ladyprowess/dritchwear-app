@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image, RefreshControl, Alert, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -9,6 +9,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import ProductModal from '@/components/ProductModal';
 import { formatCurrency, convertFromNGN } from '@/lib/currency';
 import EdgeToEdgeWrapper from '@/components/EdgeToEdgeWrapper';
+import { useEdgeToEdge } from '@/hooks/useEdgeToEdge';
+import ResponsiveGrid from '@/components/ResponsiveGrid';
 
 interface Product {
   id: string;
@@ -30,8 +32,6 @@ interface SpecialOffer {
   promo_code: string;
   is_active: boolean;
 }
-
-
 
 export default function HomeScreen() {
   const { profile, refreshProfile, user } = useAuth();
@@ -177,8 +177,6 @@ export default function HomeScreen() {
 
   const currentOffer = specialOffers.length > 0 ? specialOffers[0] : null;
 
-  
-
   return (
     <EdgeToEdgeWrapper>
       <ScrollView
@@ -187,21 +185,26 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header + Wallet */}
+        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Welcome back,</Text>
             <Text style={styles.userName}>{profile?.full_name || 'Dritchwear Customer'}</Text>
           </View>
           
-          <LinearGradient colors={['#7C3AED', '#3B82F6']} style={styles.walletCard}>
+          <LinearGradient
+            colors={['#7C3AED', '#3B82F6']}
+            style={styles.walletCard}
+          >
             <View style={styles.walletContent}>
               <Wallet size={20} color="#FFFFFF" />
-              <Text style={styles.walletBalance}>{getWalletBalance()}</Text>
+              <Text style={styles.walletBalance}>
+                {getWalletBalance()}
+              </Text>
             </View>
           </LinearGradient>
         </View>
-  
+
         {/* Quick Actions */}
         <View style={styles.quickActionsContainer}>
           <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -222,7 +225,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
-  
+
         {/* Featured Products */}
         <View style={styles.productsContainer}>
           <View style={styles.sectionHeader}>
@@ -231,7 +234,7 @@ export default function HomeScreen() {
               <Text style={styles.seeAllText}>See All</Text>
             </Pressable>
           </View>
-  
+
           {loading ? (
             <View style={styles.loadingContainer}>
               <Text style={styles.loadingText}>Loading products...</Text>
@@ -257,10 +260,10 @@ export default function HomeScreen() {
                     <Text style={styles.productName} numberOfLines={2}>{item.name}</Text>
                     <Text style={styles.productPrice}>{formatProductPrice(item.price)}</Text>
                     <View style={styles.productFooter}>
-                      <View style={styles.ratingContainer}>
-                        <Star size={12} color="#F59E0B" fill="#F59E0B" />
-                        <Text style={styles.ratingText}>4.8</Text>
-                      </View>
+                    <View style={styles.ratingContainer}>
+                      <Star size={12} color="#E5E7EB" fill="#E5E7EB" />
+                      <Text style={styles.ratingText}>No reviews</Text>
+                    </View>
                       <Text style={styles.categoryText}>{item.category}</Text>
                     </View>
                     <Pressable

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, Alert, M
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X } from 'lucide-react-native';
+import { Package, Filter, Search, MoreHorizontal, CheckCircle, XCircle, X, Star } from 'lucide-react-native';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import PaystackPayment from '@/components/PaystackPayment';
 import PayPalPayment from '@/components/PayPalPayment';
@@ -488,6 +488,10 @@ export default function CustomerOrdersScreen() {
     }
   };
 
+  const canReviewOrder = (order: Order) => {
+    return !isCustomRequest(order) && order.order_status === 'delivered';
+  };
+
   const handlePayPalCancel = () => {
     setShowPayPal(false);
     setPaymentInvoice(null);
@@ -646,6 +650,15 @@ export default function CustomerOrdersScreen() {
                       <Text style={styles.rejectButtonText}>
                         {processingInvoice === invoice.id ? 'Processing...' : 'Reject'}
                       </Text>
+
+                      {!isCustom && item.order_status === 'delivered' && (
+          <View style={styles.reviewSection}>
+            <View style={styles.reviewPrompt}>
+              <Star size={14} color="#F59E0B" />
+              <Text style={styles.reviewPromptText}>Can review</Text>
+            </View>
+          </View>
+        )}
                     </Pressable>
                   </View>
                 )}
@@ -948,6 +961,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    alignItems: 'flex-end',
+  },
+  reviewPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  reviewPromptText: {
+    fontSize: 10,
+    fontFamily: 'Inter-SemiBold',
+    color: '#92400E',
   },
   invoiceHeader: {
     flexDirection: 'row',
