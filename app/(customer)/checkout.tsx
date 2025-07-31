@@ -80,6 +80,34 @@ export default function CheckoutScreen() {
     return items.reduce((sum, item) => sum + item.quantity, 0);
   };
 
+  const updateStockLevels = async (
+    orderItems: { product_id: string; quantity: number }[]
+  ) => {
+    for (const item of orderItems) {
+      const { data: product, error: fetchError } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('id', item.product_id)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching product stock:', fetchError);
+        continue;
+      }
+
+      const newStock = Math.max((product?.stock || 0) - item.quantity, 0);
+
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', item.product_id);
+
+      if (updateError) {
+        console.error('Error updating product stock:', updateError);
+      }
+    }
+  };
+
   const handleOrder = async (paymentMethod: 'wallet' | 'card' | 'paypal') => {
     if (!deliveryAddress.trim()) {
       Alert.alert('Delivery Address Required', 'Please enter your delivery address');
@@ -190,6 +218,13 @@ export default function CheckoutScreen() {
 
       if (orderError) throw orderError;
 
+      await updateStockLevels(
+        items.map(item => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+        }))
+      );
+
       // Deduct from wallet
       const { error: walletError } = await supabase
         .from('profiles')
@@ -279,6 +314,13 @@ export default function CheckoutScreen() {
         .single();
 
       if (orderError) throw orderError;
+
+      await updateStockLevels(
+        orderData.items.map((item: any) => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+        }))
+      );
 
       // Create transaction record
       const { error: transactionError } = await supabase
