@@ -137,6 +137,54 @@ export default function AdminProductsScreen() {
     setFilteredProducts(filtered);
   }, [products, selectedCategory, searchQuery]);
 
+
+  useEffect(() => {
+    const subscription = supabase
+      .channel('all-products-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'products',
+        },
+        (payload) => {
+          console.log('Product change detected:', payload);
+          
+          if (payload.eventType === 'UPDATE') {
+            // Update existing product
+            setProducts(prevProducts => 
+              prevProducts.map(product => 
+                product.id === payload.new.id 
+                  ? { ...product, ...payload.new }
+                  : product
+              )
+            );
+            
+            setFilteredProducts(prevFiltered => 
+              prevFiltered.map(product => 
+                product.id === payload.new.id 
+                  ? { ...product, ...payload.new }
+                  : product
+              )
+            );
+          } else if (payload.eventType === 'INSERT') {
+            // Add new product (if needed)
+            fetchProducts(); // Refetch to maintain order and get images
+          } else if (payload.eventType === 'DELETE') {
+            // Remove deleted product
+            setProducts(prev => prev.filter(p => p.id !== payload.old.id));
+            setFilteredProducts(prev => prev.filter(p => p.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe();
+  
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
   const resetForm = () => {
     setFormData({
       name: '',

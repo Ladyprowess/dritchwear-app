@@ -255,8 +255,25 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
           }}
         ]
       );
+
+      try {
+        const totalQuantityToReduce = newItems.reduce((sum, item) => sum + item.quantity, 0);
+        const { error: stockError } = await supabase
+          .from('products')
+          .update({ 
+            stock: Math.max(0, product.stock - totalQuantityToReduce)
+          })
+          .eq('id', product.id);
+      
+        if (stockError) {
+          console.error('Error updating stock:', stockError);
+        }
+      } catch (error) {
+        console.error('Stock update failed:', error);
+      }
       
       resetModal();
+    
     } catch (error) {
       console.error('Error adding to cart:', error);
       Alert.alert('Error', 'Failed to add items to cart. Please try again.');
