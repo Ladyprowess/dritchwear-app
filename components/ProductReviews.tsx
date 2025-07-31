@@ -25,10 +25,10 @@ interface ProductReviewsProps {
   isAdminUser?: boolean; // Add this prop
 }
 
-export default function ProductReviews({ 
-  productId, 
-  onReviewsUpdate, 
-  showAddReview = true, 
+export default function ProductReviews({
+  productId,
+  onReviewsUpdate,
+  showAddReview = true,
   currentUserId,
   isAdminUser = false // Add this prop with default
 }: ProductReviewsProps) {
@@ -49,6 +49,35 @@ export default function ProductReviews({
   const effectiveUserId = currentUserId || user?.id;
   const isAdmin = isAdminUser || profile?.is_admin === true; // Use passed prop or fall
 
+  const fetchReviews = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select(`
+          *,
+          profiles:user_id (
+            full_name
+          )
+        `)
+        .eq('product_id', productId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const visibleReviews = isAdmin ? data : data?.filter(r => r.is_verified);
+      setReviews(visibleReviews || []);
+
+      if (effectiveUserId && data) {
+        const existingReview = data.find(r => r.user_id === effectiveUserId);
+        setUserReview(existingReview || null);
+      }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId, isAdmin, effectiveUserId]);
+
   useEffect(() => {
     if (productId) {
       fetchReviews();
@@ -57,37 +86,6 @@ export default function ProductReviews({
       }
     }
   }, [productId, effectiveUserId, fetchReviews]);
-  
-
-
-const fetchReviews = useCallback(async () => {
-  try {
-    const { data, error } = await supabase
-      .from('reviews')
-      .select(`
-        *,
-        profiles:user_id (
-          full_name
-        )
-      `)
-      .eq('product_id', productId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-
-    const visibleReviews = isAdmin ? data : data?.filter(r => r.is_verified);
-    setReviews(visibleReviews || []);
-
-    if (effectiveUserId && data) {
-      const existingReview = data.find(r => r.user_id === effectiveUserId);
-      setUserReview(existingReview || null);
-    }
-  } catch (error) {
-    console.error('Error fetching reviews:', error);
-  } finally {
-    setLoading(false);
-  }
-}, [productId, isAdmin, effectiveUserId]);
 
 
   const checkCanReview = async () => {
