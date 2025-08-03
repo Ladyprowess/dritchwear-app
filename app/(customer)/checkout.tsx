@@ -80,34 +80,6 @@ export default function CheckoutScreen() {
     return items.reduce((sum, item) => sum + item.quantity, 0);
   };
 
-  const updateStockLevels = async (
-    orderItems: { product_id: string; quantity: number }[]
-  ) => {
-    for (const item of orderItems) {
-      const { data: product, error: fetchError } = await supabase
-        .from('products')
-        .select('stock')
-        .eq('id', item.product_id)
-        .single();
-
-      if (fetchError) {
-        console.error('Error fetching product stock:', fetchError);
-        continue;
-      }
-
-      const newStock = Math.max((product?.stock || 0) - item.quantity, 0);
-
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ stock: newStock })
-        .eq('id', item.product_id);
-
-      if (updateError) {
-        console.error('Error updating product stock:', updateError);
-      }
-    }
-  };
-
   const handleOrder = async (paymentMethod: 'wallet' | 'card' | 'paypal') => {
     if (!deliveryAddress.trim()) {
       Alert.alert('Delivery Address Required', 'Please enter your delivery address');
@@ -188,26 +160,38 @@ export default function CheckoutScreen() {
 
   const processWalletPayment = async (orderTotals: any, discountAmount: number) => {
     try {
-      // Create order record with PENDING status
+      // Prepare order items for database
+      const orderItems = items.map(item => ({
+        product_id: item.productId,
+        name: item.productName,
+        price: item.price,
+        quantity: item.quantity,
+        size: item.size,
+        color: item.color,
+      }));
+
+      // First validate stock availability using the database function
+      const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
+        order_items: orderItems
+      });
+
+      if (stockValidationError) {
+        throw new Error(`Stock validation failed: ${stockValidationError.message}`);
+      }
+
+      // Create order record with payment_status 'paid' to trigger stock reduction
       const { data: orderRecord, error: orderError } = await supabase
         .from('orders')
         .insert({
           user_id: user!.id,
-          items: items.map(item => ({
-            product_id: item.productId,
-            name: item.productName,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-          })),
+          items: orderItems,
           subtotal: orderTotals.subtotal,
           service_fee: orderTotals.serviceFee,
           delivery_fee: orderTotals.deliveryFee,
           total: orderTotals.total,
           payment_method: 'wallet',
-          payment_status: 'paid',
-          order_status: 'pending', // ✅ Set to pending status
+          payment_status: 'paid', // This should trigger the stock reduction trigger
+          order_status: 'pending',
           delivery_address: deliveryAddress.trim(),
           currency: 'NGN',
           promo_code: appliedPromo?.code || null,
@@ -218,12 +202,8 @@ export default function CheckoutScreen() {
 
       if (orderError) throw orderError;
 
-      await updateStockLevels(
-        items.map(item => ({
-          product_id: item.productId,
-          quantity: item.quantity,
-        }))
-      );
+      console.log('Order created successfully:', orderRecord.id);
+      console.log('Stock should have been reduced by database trigger');
 
       // Deduct from wallet
       const { error: walletError } = await supabase
@@ -291,7 +271,16 @@ export default function CheckoutScreen() {
     try {
       if (!orderData) throw new Error('Order data not found');
 
-      // Create order record with PENDING status
+      // First validate stock availability using the database function
+      const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
+        order_items: orderData.items
+      });
+
+      if (stockValidationError) {
+        throw new Error(`Stock validation failed: ${stockValidationError.message}`);
+      }
+
+      // Create order record - stock will be automatically reduced by database trigger
       const { data: orderRecord, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -302,8 +291,8 @@ export default function CheckoutScreen() {
           delivery_fee: orderData.deliveryFee,
           total: orderData.total,
           payment_method: provider,
-          payment_status: 'paid',
-          order_status: 'pending', // ✅ Set to pending status
+          payment_status: 'paid', // This should trigger the stock reduction trigger
+          order_status: 'pending',
           delivery_address: orderData.delivery_address,
           currency: orderData.currency,
           original_amount: orderData.original_amount,
@@ -315,12 +304,8 @@ export default function CheckoutScreen() {
 
       if (orderError) throw orderError;
 
-      await updateStockLevels(
-        orderData.items.map((item: any) => ({
-          product_id: item.product_id,
-          quantity: item.quantity,
-        }))
-      );
+      console.log('Online payment order created successfully:', orderRecord.id);
+      console.log('Stock should have been reduced by database trigger');
 
       // Create transaction record
       const { error: transactionError } = await supabase

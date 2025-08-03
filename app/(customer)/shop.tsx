@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
   stockText: {
     fontSize: 10,
     fontFamily: 'Inter-Medium',
-    color: '#6B7280',
+    color: '#10B981',
   },
   addToCartButton: {
     width: 32,

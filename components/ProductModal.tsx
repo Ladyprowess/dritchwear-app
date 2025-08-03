@@ -256,21 +256,8 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
         ]
       );
 
-      try {
-        const totalQuantityToReduce = newItems.reduce((sum, item) => sum + item.quantity, 0);
-        const { error: stockError } = await supabase
-          .from('products')
-          .update({ 
-            stock: Math.max(0, product.stock - totalQuantityToReduce)
-          })
-          .eq('id', product.id);
-      
-        if (stockError) {
-          console.error('Error updating stock:', stockError);
-        }
-      } catch (error) {
-        console.error('Stock update failed:', error);
-      }
+      // Stock will be reduced automatically when order is placed
+      // No need to reduce stock when adding to cart
       
       resetModal();
     

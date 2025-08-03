@@ -2,22 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '@/lib/supabase';
-import { 
-  Package, 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit3, 
-  Trash2, 
-  Save, 
-  X, 
-  Eye, 
-  EyeOff,
-  ImageIcon,
-  Tag,
-  DollarSign,
-  Info
-} from 'lucide-react-native';
+import { Package, Plus, Search, Filter, CreditCard as Edit3, Trash2, Save, X, Eye, EyeOff, Image as ImageIcon, Tag, DollarSign, Info } from 'lucide-react-native';
 import ProductDetailsModal from '@/components/ProductDetailsModal';
 
 interface Product {
@@ -343,6 +328,13 @@ export default function AdminProductsScreen() {
     }).format(amount);
   };
 
+  const getStockColor = (stock: number) => {
+    if (stock === 0) return '#EF4444'; // Red for out of stock
+    if (stock <= 5) return '#F59E0B'; // Orange for low stock
+    if (stock <= 20) return '#3B82F6'; // Blue for medium stock
+    return '#10B981'; // Green for good stock
+  };
+
   const renderProduct = (product: Product) => (
     <View key={product.id} style={styles.productCard}>
       <View style={styles.productHeader}>
@@ -392,9 +384,24 @@ export default function AdminProductsScreen() {
           </View>
           
           <View style={styles.productDetails}>
-            <Text style={styles.productStock}>
-              Stock: {product.stock}
-            </Text>
+            <View style={styles.stockContainer}>
+              <Text style={[
+                styles.productStock,
+                { color: getStockColor(product.stock) }
+              ]}>
+                Stock: {product.stock}
+              </Text>
+              {product.stock <= 5 && product.stock > 0 && (
+                <View style={styles.lowStockBadge}>
+                  <Text style={styles.lowStockText}>Low Stock</Text>
+                </View>
+              )}
+              {product.stock === 0 && (
+                <View style={styles.outOfStockBadge}>
+                  <Text style={styles.outOfStockText}>Out of Stock</Text>
+                </View>
+              )}
+            </View>
             <Pressable
               style={[
                 styles.statusButton,
