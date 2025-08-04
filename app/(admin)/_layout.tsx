@@ -1,6 +1,6 @@
 import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { BarChart3, Package, Users, Bell, Settings } from 'lucide-react-native';
+import { ChartBar as BarChart3, Package, Users, Bell, Settings, ShoppingBag } from 'lucide-react-native';
 
 export default function AdminLayout() {
   const { user, profile, loading } = useAuth();
@@ -48,7 +48,7 @@ export default function AdminLayout() {
         name="orders"
         options={{
           title: 'Orders',
-          tabBarIcon: ({ size, color }) => <Package size={size} color={color} />,
+          tabBarIcon: ({ size, color }) => <ShoppingBag size={size} color={color} />,
         }}
       />
       <Tabs.Screen

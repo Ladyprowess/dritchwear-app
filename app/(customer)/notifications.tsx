@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Bell, Package, Gift, AlertCircle, CheckCircle } from 'lucide-react-native';
+import { Bell, Package, Gift, CircleAlert as AlertCircle, CircleCheck as CheckCircle } from 'lucide-react-native';
+import NotificationDetailsModal from '@/components/NotificationDetailsModal';
 
 interface Notification {
   id: string;
@@ -26,15 +27,22 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
   const fetchNotifications = async () => {
     if (!user) return;
 
+    console.log('🔍 Fetching notifications for user:', user.id);
+    
     const { data } = await supabase
       .from('notifications')
       .select('*')
       .or(`user_id.eq.${user.id},user_id.is.null`)
       .order('created_at', { ascending: false });
+    
+    console.log('📥 Fetched notifications:', data?.length || 0);
+    console.log('📋 Notifications data:', data);
     
     if (data) setNotifications(data);
     setLoading(false);
@@ -68,6 +76,19 @@ export default function NotificationsScreen() {
     setNotifications(prev =>
       prev.map(notif => ({ ...notif, is_read: true }))
     );
+  };
+
+  const handleNotificationPress = (notification: Notification) => {
+    setSelectedNotification(notification);
+    setShowDetailsModal(true);
+  };
+
+  const handleMarkAsReadFromModal = (notificationId: string) => {
+    markAsRead(notificationId);
+    // Update the selected notification state
+    if (selectedNotification && selectedNotification.id === notificationId) {
+      setSelectedNotification(prev => prev ? { ...prev, is_read: true } : null);
+    }
   };
 
   const onRefresh = async () => {
@@ -113,7 +134,7 @@ export default function NotificationsScreen() {
           styles.notificationCard,
           !notification.is_read && styles.notificationCardUnread
         ]}
-        onPress={() => !notification.is_read && markAsRead(notification.id)}
+        onPress={() => handleNotificationPress(notification)}
       >
         <View style={styles.notificationHeader}>
           <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
@@ -181,6 +202,17 @@ export default function NotificationsScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Notification Details Modal */}
+      <NotificationDetailsModal
+        notification={selectedNotification}
+        visible={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedNotification(null);
+        }}
+        onMarkAsRead={handleMarkAsReadFromModal}
+      />
     </SafeAreaView>
   );
 }
