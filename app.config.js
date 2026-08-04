@@ -44,7 +44,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     package: 'com.dritchwear.app',
     googleServicesFile: './google-services.json',
     softwareKeyboardLayoutMode: 'resize',
-    versionCode: 160,
+    versionCode: 162,
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#FFFFFF',

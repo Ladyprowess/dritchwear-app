@@ -15,10 +15,11 @@ interface DashboardDetailModalProps {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  const label = status ? status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ') : 'Unknown';
   return (
     <View style={[detailStyles.badge, { backgroundColor: `${getStatusBadgeColor(status)}22` }]}>
       <Text style={[detailStyles.badgeText, { color: getStatusBadgeColor(status) }]}>
-        {status?.charAt(0).toUpperCase() + status?.slice(1).replace(/_/g, ' ')}
+        {label}
       </Text>
     </View>
   );

@@ -115,8 +115,12 @@ async function refundWallet(userId: string, amount: number, description: string,
 }
 
 async function deductPoints(userId: string, points: number, description: string, reference: string) {
-  const { error } = await supabase.rpc('increment_points', { uid: userId, delta: -points });
+  // deduct_points() checks-and-deducts atomically under a row lock (mirrors
+  // deduct_wallet) - increment_points() with a negative delta just floors at
+  // 0, which let two concurrent bill payments both "succeed" off one balance.
+  const { data, error } = await supabase.rpc('deduct_points', { uid: userId, amount: points });
   if (error) throw new Error(`Failed to deduct points: ${error.message}`);
+  if (!data) throw new Error('Insufficient points balance');
   await supabase.from('points_transactions').insert({
     user_id: userId, type: 'spent', amount: points, description, reference,
   });
@@ -421,7 +425,15 @@ Deno.serve(async (req: Request) => {
                             `(₦${wal.toLocaleString()} wallet)`;
 
     let message = '';
-    if (serviceType === 'airtime')          message = `₦${amount.toLocaleString()} airtime sent to ${beneficiary}.`;
+    if (!isSuccess) {
+      // Peyflex accepted the request but hasn't confirmed delivery yet (e.g.
+      // a queued/pending status rather than an outright failure, which
+      // peyflexPost already throws on). Balance stays deducted - telling the
+      // customer this succeeded when it hasn't actually delivered yet would
+      // be a lie, and refunding now risks double-refunding if it later
+      // completes. Being processed is recorded as 'pending' for follow-up.
+      message = 'Your payment was received and is being processed. This can take a few minutes - check your bill history for the final status.';
+    } else if (serviceType === 'airtime')   message = `₦${amount.toLocaleString()} airtime sent to ${beneficiary}.`;
     else if (serviceType === 'data')        message = `Data bundle sent to ${beneficiary}.`;
     else if (serviceType === 'electricity') {
       message = `₦${amount.toLocaleString()} electricity payment submitted.`;
@@ -429,7 +441,7 @@ Deno.serve(async (req: Request) => {
     } else                                  message = `${provider.toUpperCase()} subscription processed for ${beneficiary}.`;
 
     return cors(JSON.stringify({
-      success: true,
+      success: isSuccess,
       message: `${message} ${payNote}`.trim(),
       token,
       transactionId: peyflexResponse?.transaction_id ?? null,

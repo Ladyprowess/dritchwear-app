@@ -52,15 +52,14 @@ Deno.serve(async (req: Request) => {
 
   const { data: promo } = await supabase
     .from('promo_codes')
-    .select('discount_percentage, description, is_active, max_uses, current_uses, start_date, end_date')
+    .select('discount_percentage, description, is_active, max_usage, used_count, expires_at')
     .eq('code', code)
     .single();
 
-  if (!promo)                                            return json({ valid: false, reason: 'Code not found' });
-  if (!promo.is_active)                                  return json({ valid: false, reason: 'Code is no longer active' });
-  if (promo.start_date && promo.start_date > now)        return json({ valid: false, reason: 'Code is not yet active' });
-  if (promo.end_date   && promo.end_date   < now)        return json({ valid: false, reason: 'Code has expired' });
-  if (promo.max_uses !== null && promo.current_uses >= promo.max_uses) {
+  if (!promo)                                             return json({ valid: false, reason: 'Code not found' });
+  if (!promo.is_active)                                   return json({ valid: false, reason: 'Code is no longer active' });
+  if (promo.expires_at && promo.expires_at < now)         return json({ valid: false, reason: 'Code has expired' });
+  if (promo.max_usage !== null && promo.used_count >= promo.max_usage) {
     return json({ valid: false, reason: 'Code has reached its usage limit' });
   }
 

@@ -195,15 +195,15 @@ filterOrders(allItems, selectedStatus, searchQuery);
         if ('order_status' in item) {
           return (
             item.id.toLowerCase().includes(searchLower) ||
-            item.profiles.full_name?.toLowerCase().includes(searchLower) ||
-            item.profiles.email.toLowerCase().includes(searchLower)
+            item.profiles?.full_name?.toLowerCase().includes(searchLower) ||
+            item.profiles?.email?.toLowerCase().includes(searchLower)
           );
         } else {
           return (
             item.id.toLowerCase().includes(searchLower) ||
             item.title.toLowerCase().includes(searchLower) ||
-            item.profiles.full_name?.toLowerCase().includes(searchLower) ||
-            item.profiles.email.toLowerCase().includes(searchLower)
+            item.profiles?.full_name?.toLowerCase().includes(searchLower) ||
+            item.profiles?.email?.toLowerCase().includes(searchLower)
           );
         }
       });
@@ -312,7 +312,7 @@ filterOrders(allItems, selectedStatus, searchQuery);
               {isCustom ? item.title : `#${item.id.slice(0, 8)}`}
             </Text>
             <Text style={styles.customerName}>
-              {item.profiles.full_name || item.profiles.email}
+              {item.profiles?.full_name || item.profiles?.email || 'Unknown customer'}
             </Text>
             <Text style={styles.orderDate}>{formatDate(item.created_at)}</Text>
           </View>

@@ -14,6 +14,7 @@ interface AddToCartFooterProps {
   selectedColorsCount: number;
   ctaPulseStyle: any;
   onPress: () => void;
+  outOfStock?: boolean;
 }
 
 export function AddToCartFooter({
@@ -26,6 +27,7 @@ export function AddToCartFooter({
   selectedColorsCount,
   ctaPulseStyle,
   onPress,
+  outOfStock,
 }: AddToCartFooterProps) {
   if (lockedTier) {
     return (
@@ -33,6 +35,16 @@ export function AddToCartFooter({
         <View style={[styles.addToCartButton, styles.addToCartButtonDisabled]}>
           <Lock size={18} color="#FFFFFF" />
           <Text style={styles.addToCartText}>Members only · unlock at {lockedTier}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (outOfStock) {
+    return (
+      <View style={styles.bottomSection}>
+        <View style={[styles.addToCartButton, styles.addToCartButtonDisabled]}>
+          <Text style={styles.addToCartText}>Out of Stock</Text>
         </View>
       </View>
     );

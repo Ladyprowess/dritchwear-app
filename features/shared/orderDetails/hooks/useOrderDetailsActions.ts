@@ -177,43 +177,65 @@ export function useOrderDetailsActions(
     }
   };
 
+  const runLateDeliveryCredit = async () => {
+    if (!order) return;
+    setGivingCredit(true);
+    try {
+      // Claim the flag BEFORE crediting (not after) - this is the same
+      // insert-then-claim ordering used for customer_order_alerts.delivered_at.
+      // Crediting first and flagging second leaves a window where the
+      // automated cron job (or a second admin click) can't yet see that a
+      // credit is already in flight and double-credits the ₦1,000.
+      const { data: claimed, error: flagError } = await supabase
+        .from('orders')
+        .update({ late_delivery_credit_at: new Date().toISOString() })
+        .eq('id', order.id)
+        .is('late_delivery_credit_at', null)
+        .select('id')
+        .maybeSingle();
+      if (flagError) throw flagError;
+      if (!claimed) {
+        Alert.alert('Already credited', 'This order has already received its late delivery credit.');
+        return;
+      }
+
+      const { error: creditError } = await supabase.rpc('credit_wallet', {
+        p_user_id: order.user_id,
+        p_amount: 1000,
+        p_description: `Late delivery credit for order #${order.id.toString().substring(0, 8)}`,
+        p_reference: order.id,
+      });
+      if (creditError) throw creditError;
+
+      Alert.alert('Success', "₦1,000 has been credited to the customer's wallet.");
+      onOrderUpdate();
+    } catch (error) {
+      console.error('Error giving late delivery credit:', error);
+      Alert.alert('Error', 'Could not credit the wallet. Please try again.');
+    } finally {
+      setGivingCredit(false);
+    }
+  };
+
   const handleGiveLateDeliveryCredit = () => {
     if (!order) return;
+
+    // Alert.alert with a button array is a no-op on web (react-native-web
+    // has no confirm-dialog implementation) - this admin panel is used as a
+    // web/PWA app, so it needs the window.confirm branch to do anything at all.
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm("Credit ₦1,000 to this customer's wallet for a late delivery?")) {
+        void runLateDeliveryCredit();
+      }
+      return;
+    }
+
     Alert.alert(
       'Give ₦1,000 Credit',
       "Credit ₦1,000 to this customer's wallet for a late delivery?",
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Give Credit',
-          style: 'destructive',
-          onPress: async () => {
-            setGivingCredit(true);
-            try {
-              const { error: creditError } = await supabase.rpc('credit_wallet', {
-                p_user_id: order.user_id,
-                p_amount: 1000,
-                p_description: `Late delivery credit for order #${order.id.toString().substring(0, 8)}`,
-                p_reference: order.id,
-              });
-              if (creditError) throw creditError;
-
-              const { error: flagError } = await supabase
-                .from('orders')
-                .update({ late_delivery_credit_at: new Date().toISOString() })
-                .eq('id', order.id);
-              if (flagError) throw flagError;
-
-              Alert.alert('Success', "₦1,000 has been credited to the customer's wallet.");
-              onOrderUpdate();
-            } catch (error) {
-              console.error('Error giving late delivery credit:', error);
-              Alert.alert('Error', 'Could not credit the wallet. Please try again.');
-            } finally {
-              setGivingCredit(false);
-            }
-          },
-        },
+        { text: 'Give Credit', style: 'destructive', onPress: () => void runLateDeliveryCredit() },
       ]
     );
   };

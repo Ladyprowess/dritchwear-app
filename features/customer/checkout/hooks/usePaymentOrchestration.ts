@@ -224,6 +224,20 @@ export function usePaymentOrchestration({
         throw new Error(`Stock validation failed: ${stockValidationError.message}`);
       }
 
+      // Debit the wallet BEFORE creating a paid order. deduct_wallet() checks
+      // and deducts atomically under a row lock, so it's immune to the stale
+      // client-side balance read and to two concurrent orders both passing a
+      // "sufficient balance" check. Doing this first means a failure here
+      // never leaves a paid order with no payment behind it.
+      const { data: debited, error: walletError } = await supabase.rpc('deduct_wallet', {
+        uid: user!.id,
+        amount: orderTotals.total,
+      });
+      if (walletError) throw walletError;
+      if (!debited) {
+        throw new Error('Insufficient wallet balance. Please refresh and try again.');
+      }
+
       // Create order record with payment_status 'paid' to trigger stock reduction
       const { data: orderRecord, error: orderError } = await supabase
         .from('orders')
@@ -251,7 +265,26 @@ export function usePaymentOrchestration({
         .select()
         .single();
 
-      if (orderError) throw orderError;
+      if (orderError) {
+        // Wallet was already debited - refund it since no order exists to
+        // charge for. Uses the same atomic credit_wallet the late-delivery
+        // guarantee uses, so this can't race with anything else touching the balance.
+        try {
+          const { error: refundError } = await supabase.rpc('credit_wallet', {
+            p_user_id: user!.id,
+            p_amount: orderTotals.total,
+            p_description: 'Refund: order could not be created after wallet debit',
+            p_reference: null,
+          });
+          if (refundError) throw refundError;
+        } catch (refundError) {
+          console.error('CRITICAL: wallet debited but refund-on-failure also failed', refundError);
+          posthog.captureException(refundError instanceof Error ? refundError : new Error(String(refundError)), {
+            context: 'processWalletPayment_refund_failed',
+          });
+        }
+        throw orderError;
+      }
 
       console.log('Order created successfully:', orderRecord.id);
       await logEvent('purchase', {
@@ -269,16 +302,6 @@ export function usePaymentOrchestration({
         promo_code: appliedPromo?.code ?? null,
       });
       console.log('Promo used with ID:', appliedPromo?.promoId); // Debug log
-
-      // Deduct from wallet
-      const { error: walletError } = await supabase
-        .from('profiles')
-        .update({
-          wallet_balance: profile!.wallet_balance - orderTotals.total
-        })
-        .eq('id', user!.id);
-
-      if (walletError) throw walletError;
 
       // Create transaction record
       const { error: transactionError } = await supabase

@@ -45,6 +45,20 @@ Deno.serve(async (req: Request) => {
     try {
       const shortId = order.id.toString().substring(0, 8);
 
+      // Claim the flag before crediting (not after) - the fetch above and
+      // this claim aren't atomic with each other, so without this ordering
+      // an overlapping cron run (or an admin's manual credit button) could
+      // both see late_delivery_credit_at as null and both credit ₦1,000.
+      const { data: claimed, error: flagError } = await supabase
+        .from('orders')
+        .update({ late_delivery_credit_at: new Date().toISOString() })
+        .eq('id', order.id)
+        .is('late_delivery_credit_at', null)
+        .select('id')
+        .maybeSingle();
+      if (flagError) throw flagError;
+      if (!claimed) continue; // someone else already claimed this order
+
       const { error: creditError } = await supabase.rpc('credit_wallet', {
         p_user_id: order.user_id,
         p_amount: CREDIT_AMOUNT,
@@ -52,12 +66,6 @@ Deno.serve(async (req: Request) => {
         p_reference: order.id,
       });
       if (creditError) throw creditError;
-
-      const { error: flagError } = await supabase
-        .from('orders')
-        .update({ late_delivery_credit_at: new Date().toISOString() })
-        .eq('id', order.id);
-      if (flagError) throw flagError;
 
       // Reuses the existing customer_order_alerts fan-out (in-app + push +
       // email, see 202608040003 migration) - inserting here triggers it the

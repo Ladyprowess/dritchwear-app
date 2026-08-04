@@ -8,13 +8,14 @@ interface StatusSectionProps {
 }
 
 export function StatusSection({ currentStatus }: StatusSectionProps) {
+  const label = currentStatus ? currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1).replace('_', ' ') : 'Unknown';
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Order Status</Text>
       <View style={styles.statusDisplayCard}>
         <View style={[styles.statusBadge, { backgroundColor: `${getStatusColor(currentStatus)}20` }]}>
           <Text style={[styles.statusText, { color: getStatusColor(currentStatus) }]}>
-            {currentStatus?.charAt(0).toUpperCase() + currentStatus?.slice(1).replace('_', ' ')}
+            {label}
           </Text>
         </View>
       </View>

@@ -155,6 +155,9 @@ export default function PromoCodesScreen() {
     if (formData.type === 'item_percentage' && !formData.applicable_product_id.trim()) {
       return 'Product ID is required for item discount';
     }
+    if (formData.expires_at.trim() && isNaN(new Date(formData.expires_at.trim()).getTime())) {
+      return 'Expiry date must be a valid date (YYYY-MM-DD)';
+    }
     return null;
   };
 
@@ -175,7 +178,11 @@ export default function PromoCodesScreen() {
       min_order_amount: formData.min_order_amount ? Number(formData.min_order_amount) : null,
       min_quantity: formData.min_quantity ? Number(formData.min_quantity) : null,
       max_usage: formData.max_usage ? Number(formData.max_usage) : null,
-      expires_at: formData.expires_at ? new Date(formData.expires_at).toISOString() : null,
+      // Treat the date as "valid through end of this day" rather than UTC
+      // midnight, so codes don't read as expired for most of the last day
+      // the admin intended them to work (validateForm already confirmed
+      // this parses to a valid date).
+      expires_at: formData.expires_at.trim() ? new Date(`${formData.expires_at.trim()}T23:59:59`).toISOString() : null,
       is_active: formData.is_active,
       first_time_only: formData.first_time_only,
     };

@@ -128,9 +128,16 @@ export function usePromoCode({ profileId, userCurrency, subtotalInUserCurrency, 
       await setAppliedPromo({
         code: promo.code,
         discount: promo.discount_percentage / 100,
-        description: promo.description || `${promo.discount_percentage}% off`,
+        description: promo.description || (
+          promo.type === 'free_delivery'
+            ? 'Free Delivery!'
+            : promo.type === 'item_percentage'
+            ? `${promo.discount_percentage}% off selected item`
+            : `${promo.discount_percentage}% off`
+        ),
         promoId: promo.id,
-        type: 'percentage',
+        type: (promo.type ?? 'percentage') as 'percentage' | 'free_delivery' | 'item_percentage',
+        productId: promo.applicable_product_id ?? undefined,
       });
 
       setShowPromoDropdown(false);

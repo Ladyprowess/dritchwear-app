@@ -225,11 +225,19 @@ export default function MessagingScreen() {
         .single();
       if (error) throw error;
 
+      // The message itself is now persisted - from here on, a failure must
+      // NOT restore `input` (the outer catch does that), since re-sending
+      // would duplicate this message. Attachment failures are surfaced as a
+      // separate, non-blocking warning instead.
       if (data && ready.length > 0) {
-        await supabase.from('support_message_attachments').insert(ready.map((p) => ({
+        const { error: attError } = await supabase.from('support_message_attachments').insert(ready.map((p) => ({
           message_id: (data as any).id, ticket_id: conv!.id,
           file_name: p.uploaded!.file_name, file_size: p.uploaded!.file_size, mime_type: p.uploaded!.mime_type, storage_path: p.uploaded!.storage_path,
         })));
+        if (attError) {
+          console.error('Failed to link attachment to message:', attError);
+          Alert.alert('Attachment not sent', 'Your message was sent, but the attached file could not be linked. Please try attaching it again in a new message.');
+        }
       }
       setPending([]);
       if (data) {

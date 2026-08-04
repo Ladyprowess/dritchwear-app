@@ -209,7 +209,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                   />
                 )}
 
-                <QuantitySelector quantity={quantity} onChange={setQuantity} />
+                <QuantitySelector quantity={quantity} onChange={setQuantity} maxQuantity={product.stock} />
 
                 <BrandingOrNoteSection
                   product={product}
@@ -260,6 +260,7 @@ export default function ProductModal({ product, visible, onClose, onOrderSuccess
                 selectedColorsCount={selectedColors.length}
                 ctaPulseStyle={ctaPulseStyle}
                 onPress={() => cart.handleAddToCart(selectedSizes, selectedColors, quantity, note, logoUrl)}
+                outOfStock={(product.stock ?? 0) <= 0}
               />
             </>
           )}

@@ -145,8 +145,9 @@ export default function ProductReviews({
       setCanReview(hasProduct || false);
     } catch (error) {
       console.error('Error checking review eligibility:', error);
-      // If there's an error, still allow review writing for delivered orders
-      setCanReview(true);
+      // Fail closed - a lookup error shouldn't let someone who never bought
+      // this product write a review.
+      setCanReview(false);
     }
   };
 
@@ -158,13 +159,14 @@ export default function ProductReviews({
 
     setSubmitting(true);
     try {
-      // Get the order ID for verification
+      // Get the order ID for verification - check every delivered order
+      // (not just one), since the product being reviewed might not be in
+      // whichever single order happened to come back first.
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .select('id, items')
         .eq('user_id', effectiveUserId)
-        .eq('order_status', 'delivered')
-        .limit(1);
+        .eq('order_status', 'delivered');
 
       if (orderError) throw orderError;
 

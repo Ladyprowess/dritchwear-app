@@ -7,7 +7,7 @@
  * Rate:     1 point = ₦0.10
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
@@ -227,6 +227,10 @@ export default function BillPaymentScreen() {
   const [webNotice, setWebNotice]     = useState<{ title: string; message: string } | null>(null);
   const [showConfirmPay, setShowConfirmPay] = useState(false);
   const [confirmMessage, setConfirmMessage] = useState('');
+  // Generated once per payment attempt (in handlePay) and reused across
+  // retries within that attempt, so bill-pay's idempotency check can
+  // recognize a retry after a dropped/failed request instead of double-charging.
+  const pendingRefRef = useRef<string | null>(null);
 
   // ── Derived amounts ──────────────────────────────────────────────────────────
   const totalNGN: number = (() => {
@@ -593,6 +597,7 @@ export default function BillPaymentScreen() {
       `${finalPoints} pts + ₦${finalWallet.toLocaleString()} wallet`;
 
     const message = `Pay ₦${totalNGN.toLocaleString()} for ${serviceType} using ${payDesc}?`;
+    pendingRefRef.current = makeRef();
 
     if (Platform.OS === 'web') {
       setConfirmMessage(message);
@@ -611,7 +616,7 @@ export default function BillPaymentScreen() {
     setPaying(true);
     try {
       const jwt = await getJwt();
-      const ref = makeRef();
+      const ref = pendingRefRef.current ?? (pendingRefRef.current = makeRef());
       const base = { amount: totalNGN, reference: ref, pointsToUse: finalPoints, walletAmount: finalWallet };
 
       let payload: Record<string, any>;
@@ -636,15 +641,26 @@ export default function BillPaymentScreen() {
       const result = await callEdge(payload, jwt);
       await refreshProfile();
 
+      // The server only reports success:true once Peyflex confirms delivery -
+      // a 200 response with success:false means it's still processing, and
+      // claiming "Payment Successful" for that would be telling the customer
+      // something that hasn't actually happened yet.
+      const title = result.success ? 'Payment Successful' : 'Payment Processing';
+      const emoji = result.success ? '✅' : '⏳';
+
       if (Platform.OS === 'web') {
         setWebNotice({
-          title: 'Payment Successful',
-          message: `${result.message}\n\nYour full payment details${serviceType === 'electricity' ? ' (including your electricity token)' : ''} are saved in Wallet History.`,
+          title,
+          message: result.success
+            ? `${result.message}\n\nYour full payment details${serviceType === 'electricity' ? ' (including your electricity token)' : ''} are saved in Wallet History.`
+            : result.message,
         });
       } else {
         Alert.alert(
-          '✅ Payment Successful',
-          `${result.message}\n\n📂 Your full payment details${serviceType === 'electricity' ? ' (including your electricity token)' : ''} are saved in Wallet History. Tap the Bills tab to view them anytime.`,
+          `${emoji} ${title}`,
+          result.success
+            ? `${result.message}\n\n📂 Your full payment details${serviceType === 'electricity' ? ' (including your electricity token)' : ''} are saved in Wallet History. Tap the Bills tab to view them anytime.`
+            : result.message,
           [
             { text: 'Done', onPress: () => router.back() },
             { text: 'View Details', onPress: () => router.replace('/(customer)/wallet-history') },

@@ -1055,6 +1055,14 @@ const styles = StyleSheet.create({
   budgetTextActive: {
     color: '#FFFFFF',
   },
+  processCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    padding: 20,
+    marginTop: 24,
+  },
   processTitle: {
     fontSize: 18,
     fontFamily: 'Inter-Bold',

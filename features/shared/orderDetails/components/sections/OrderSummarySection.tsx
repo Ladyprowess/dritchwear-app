@@ -14,13 +14,20 @@ interface OrderSummarySectionProps {
 // that's the original JSX structure, preserved verbatim rather than
 // "corrected" as part of this extraction.
 export function OrderSummarySection({ order }: OrderSummarySectionProps) {
+  // order.subtotal is stored net of any discount (it's what fees/tax were
+  // actually calculated on), but this card also shows a separate "-Discount"
+  // line - display the gross, pre-discount figure here so
+  // Subtotal - Discount + fees reconciles with Total instead of silently
+  // double-subtracting the discount.
+  const grossSubtotal = (order.subtotal || 0) + (order.discount_amount ?? 0);
+
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Order Summary</Text>
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Subtotal</Text>
-          <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order, order.subtotal || 0)}</Text>
+          <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order, grossSubtotal)}</Text>
         </View>
 
         {order.promo_code && (

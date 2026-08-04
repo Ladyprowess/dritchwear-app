@@ -46,6 +46,7 @@ export function OrderCard({
   const isCustom = isCustomRequest(item);
   const status = isCustom ? item.status : item.order_status;
   const statusColor = getStatusColor(status || '');
+  const statusLabel = status ? status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ') : 'Unknown';
   const orderNumber = generateOrderNumber(item.id, isCustom);
   const orderCurrency = item.currency || preferredCurrency || 'NGN';
 
@@ -90,7 +91,7 @@ export function OrderCard({
                 { color: statusColor }
               ]}
             >
-              {status?.charAt(0).toUpperCase() + status?.slice(1).replace('_', ' ')}
+              {statusLabel}
             </Text>
           </View>
         </View>

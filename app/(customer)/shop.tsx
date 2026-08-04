@@ -56,7 +56,7 @@ export default function ShopScreen() {
     selectedColors: filters.selectedColors,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
-  });
+  }, profile?.preferred_currency || 'NGN');
   const { wishlistIds, toggleWishlist } = useWishlist(user?.id, posthog);
   const { activeOffer, showOffer, dismissOffer } = useSpecialOffer();
   const { recentIds, recordView } = useRecentlyViewed(user?.id);

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { convertToNGN } from '@/lib/currency';
 import { getProductCategories, type StoreProduct } from '@/types/product';
 import { isNewProduct } from '../constants';
 
@@ -14,7 +15,11 @@ interface ShopFilters {
 
 const PAGE_SIZE = 12;
 
-export function useShopProducts(filters: ShopFilters) {
+// Product prices are always stored/compared in NGN; the price filter's
+// min/max inputs are in the shopper's preferred display currency, so they
+// must be converted before comparing - otherwise a non-NGN shopper's
+// "10-50" filter is silently comparing against NGN 10-50, hiding everything.
+export function useShopProducts(filters: ShopFilters, preferredCurrency: string = 'NGN') {
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,15 +135,17 @@ export function useShopProducts(filters: ShopFilters) {
     }
 
     if (minPrice !== null) {
-      filtered = filtered.filter(p => p.price >= minPrice);
+      const minPriceNGN = convertToNGN(minPrice, preferredCurrency);
+      filtered = filtered.filter(p => p.price >= minPriceNGN);
     }
     if (maxPrice !== null) {
-      filtered = filtered.filter(p => p.price <= maxPrice);
+      const maxPriceNGN = convertToNGN(maxPrice, preferredCurrency);
+      filtered = filtered.filter(p => p.price <= maxPriceNGN);
     }
 
     setFilteredProducts(filtered);
     setCurrentPage(1);
-  }, [products, selectedCategory, searchQuery, selectedSizes, selectedColors, maxPrice, minPrice]);
+  }, [products, selectedCategory, searchQuery, selectedSizes, selectedColors, maxPrice, minPrice, preferredCurrency]);
 
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const visibleProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);

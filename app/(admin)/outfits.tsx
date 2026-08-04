@@ -114,13 +114,14 @@ export default function AdminOutfitsScreen() {
         if (error) throw error;
         outfitId = data.id;
       }
-      // Replace the look's items with the current selection, preserving order.
-      await supabase.from('outfit_items').delete().eq('outfit_id', outfitId);
-      const rows = selectedIds.map((pid, index) => ({ outfit_id: outfitId, product_id: pid, position: index }));
-      if (rows.length) {
-        const { error } = await supabase.from('outfit_items').insert(rows);
-        if (error) throw error;
-      }
+      // Replace the look's items with the current selection, preserving
+      // order. Done as one atomic RPC so a failed insert can't leave the
+      // outfit's old products already deleted (see replace_outfit_items).
+      const { error: itemsError } = await supabase.rpc('replace_outfit_items', {
+        p_outfit_id: outfitId,
+        p_product_ids: selectedIds,
+      });
+      if (itemsError) throw itemsError;
       setShowModal(false);
       await fetchAll();
     } catch (e: any) {

@@ -27,14 +27,17 @@ export function usePasswordChange() {
       return;
     }
 
-    try {
-      await updatePassword(passwordData.newPassword);
-      setChangingPassword(false);
-      setPasswordData({ newPassword: '', confirmPassword: '' });
-      Alert.alert('Success', 'Password updated successfully');
-    } catch {
-      Alert.alert('Error', 'Failed to update password');
+    // updatePassword() never throws - it always resolves { error } - so the
+    // result has to be checked explicitly or a real failure (weak/reused
+    // password, expired session) gets reported to the user as a success.
+    const { error } = await updatePassword(passwordData.newPassword);
+    if (error) {
+      Alert.alert('Error', error.message || 'Failed to update password');
+      return;
     }
+    setChangingPassword(false);
+    setPasswordData({ newPassword: '', confirmPassword: '' });
+    Alert.alert('Success', 'Password updated successfully');
   };
 
   const cancelPasswordChange = () => {

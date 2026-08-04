@@ -84,7 +84,7 @@ function buildOrderEmailContent(
         heading: `Hi ${firstName}, your order is on its way! 🚚`,
         bodyHtml: `<p style="font-size:15px;line-height:1.7;color:#665f6c">Your order has shipped and should arrive at your doorstep within the next ${days} day${days === 1 ? "" : "s"}.</p>${trackingLine}${guaranteeNote()}`,
         ctaLabel: order?.tracking_link ? "TRACK YOUR PACKAGE" : "VIEW YOUR ORDER",
-        ctaUrl: order?.tracking_link || fallbackUrl,
+        ctaUrl: order?.tracking_link ? esc(order.tracking_link) : fallbackUrl,
       };
     }
     case "Order delivered 📦":
@@ -125,7 +125,7 @@ function buildOrderEmailContent(
       return {
         subject: alertTitle,
         heading: `Hi ${firstName}, ${alertTitle.toLowerCase()}`,
-        bodyHtml: `<p style="font-size:15px;line-height:1.7;color:#665f6c">${fallbackMessage}</p>`,
+        bodyHtml: `<p style="font-size:15px;line-height:1.7;color:#665f6c">${esc(fallbackMessage)}</p>`,
         ctaLabel: "VIEW YOUR ORDER",
         ctaUrl: fallbackUrl,
       };
