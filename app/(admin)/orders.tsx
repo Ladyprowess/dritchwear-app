@@ -105,6 +105,12 @@ export default function AdminOrdersScreen() {
           delivery_address,
           contact_phone,
           created_at,
+          confirmed_at,
+          shipped_at,
+          delivered_at,
+          tracking_number,
+          tracking_link,
+          late_delivery_credit_at,
           profiles:profiles(full_name,email,phone,wallet_balance,preferred_currency)
         `)
         

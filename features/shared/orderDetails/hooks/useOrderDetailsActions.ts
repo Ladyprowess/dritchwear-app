@@ -21,6 +21,7 @@ export function useOrderDetailsActions(
   const router = useRouter();
   const [updating, setUpdating] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
+  const [givingCredit, setGivingCredit] = useState(false);
 
   const downloadImage = async (imageUrl: string) => {
     try {
@@ -148,6 +149,75 @@ export function useOrderDetailsActions(
     }
   };
 
+  const handleShipWithTracking = async (trackingNumber: string, trackingLink: string): Promise<boolean> => {
+    if (!order) return false;
+    setUpdating(true);
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          order_status: 'shipped',
+          tracking_number: trackingNumber,
+          tracking_link: trackingLink || null,
+        })
+        .eq('id', order.id);
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Order marked as shipped. The customer has been emailed the tracking details.');
+      onOrderUpdate();
+      onClose();
+      return true;
+    } catch (error) {
+      console.error('Error marking order as shipped:', error);
+      Alert.alert('Error', 'Failed to update order status');
+      return false;
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleGiveLateDeliveryCredit = () => {
+    if (!order) return;
+    Alert.alert(
+      'Give ₦1,000 Credit',
+      "Credit ₦1,000 to this customer's wallet for a late delivery?",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Give Credit',
+          style: 'destructive',
+          onPress: async () => {
+            setGivingCredit(true);
+            try {
+              const { error: creditError } = await supabase.rpc('credit_wallet', {
+                p_user_id: order.user_id,
+                p_amount: 1000,
+                p_description: `Late delivery credit for order #${order.id.toString().substring(0, 8)}`,
+                p_reference: order.id,
+              });
+              if (creditError) throw creditError;
+
+              const { error: flagError } = await supabase
+                .from('orders')
+                .update({ late_delivery_credit_at: new Date().toISOString() })
+                .eq('id', order.id);
+              if (flagError) throw flagError;
+
+              Alert.alert('Success', "₦1,000 has been credited to the customer's wallet.");
+              onOrderUpdate();
+            } catch (error) {
+              console.error('Error giving late delivery credit:', error);
+              Alert.alert('Error', 'Could not credit the wallet. Please try again.');
+            } finally {
+              setGivingCredit(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleSendPaymentReminder = async () => {
     if (!order) return;
     setSendingReminder(true);
@@ -258,9 +328,12 @@ export function useOrderDetailsActions(
   return {
     updating,
     sendingReminder,
+    givingCredit,
     downloadImage,
     handleRepeatOrder,
     handleStatusUpdate,
+    handleShipWithTracking,
+    handleGiveLateDeliveryCredit,
     handleSendPaymentReminder,
     sendInvoice,
   };

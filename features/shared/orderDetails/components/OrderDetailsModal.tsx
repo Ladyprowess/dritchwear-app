@@ -19,7 +19,9 @@ import { OrderItemsSection } from './sections/OrderItemsSection';
 import { OrderSummarySection } from './sections/OrderSummarySection';
 import { PaymentInfoSection } from './sections/PaymentInfoSection';
 import { ProductReviewsSection } from './sections/ProductReviewsSection';
+import { DeliverySection } from './sections/DeliverySection';
 import { SendInvoiceModal } from './SendInvoiceModal';
+import { TrackingInfoModal } from './TrackingInfoModal';
 
 export default function OrderDetailsModal({
   order,
@@ -31,6 +33,7 @@ export default function OrderDetailsModal({
   const { isAdmin, user } = useAuth();
   const { addToCart } = useCart();
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
 
   const actions = useOrderDetailsActions(order, onOrderUpdate, onClose, addToCart);
 
@@ -87,6 +90,7 @@ export default function OrderDetailsModal({
                 currentStatus={currentStatus}
                 updating={actions.updating}
                 onStatusUpdate={actions.handleStatusUpdate}
+                onRequestShip={() => setShowTrackingModal(true)}
               />
             )}
 
@@ -105,6 +109,12 @@ export default function OrderDetailsModal({
             ) : (
               <>
                 <OrderItemsSection order={order} onDownloadImage={actions.downloadImage} />
+                <DeliverySection
+                  order={order}
+                  isAdmin={isAdmin}
+                  givingCredit={actions.givingCredit}
+                  onGiveLateDeliveryCredit={actions.handleGiveLateDeliveryCredit}
+                />
                 <OrderSummarySection order={order} />
                 <PaymentInfoSection order={order} />
                 {order.order_status === 'delivered' && (
@@ -122,6 +132,14 @@ export default function OrderDetailsModal({
           actualPaymentCurrency={actualPaymentCurrency}
           onClose={() => setShowInvoiceModal(false)}
           onSend={actions.sendInvoice}
+        />
+      )}
+
+      {mode === 'manage' && isAdmin && !custom && (
+        <TrackingInfoModal
+          visible={showTrackingModal}
+          onClose={() => setShowTrackingModal(false)}
+          onSubmit={actions.handleShipWithTracking}
         />
       )}
     </>

@@ -73,6 +73,14 @@ export interface Order {
   discount_amount?: number | null;
   notes?: string | null;
 
+  // Fulfillment tracking + delivery SLA
+  confirmed_at?: string | null;
+  shipped_at?: string | null;
+  delivered_at?: string | null;
+  tracking_number?: string | null;
+  tracking_link?: string | null;
+  late_delivery_credit_at?: string | null;
+
   // Shared by both regular + custom orders
   profiles?: OrderProfile;
   invoices?: Invoice[];

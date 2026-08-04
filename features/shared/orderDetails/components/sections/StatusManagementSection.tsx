@@ -8,9 +8,20 @@ interface StatusManagementSectionProps {
   currentStatus: string;
   updating: boolean;
   onStatusUpdate: (status: string) => void;
+  onRequestShip?: () => void;
 }
 
-export function StatusManagementSection({ isCustomOrder, currentStatus, updating, onStatusUpdate }: StatusManagementSectionProps) {
+export function StatusManagementSection({ isCustomOrder, currentStatus, updating, onStatusUpdate, onRequestShip }: StatusManagementSectionProps) {
+  const handlePress = (status: string) => {
+    // Shipping needs tracking info first, so route it through a form instead
+    // of applying the status change directly.
+    if (status === 'shipped' && !isCustomOrder && onRequestShip) {
+      onRequestShip();
+      return;
+    }
+    onStatusUpdate(status);
+  };
+
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Status Management</Text>
@@ -24,7 +35,7 @@ export function StatusManagementSection({ isCustomOrder, currentStatus, updating
                 styles.statusOption,
                 currentStatus === status && styles.statusOptionActive
               ]}
-              onPress={() => onStatusUpdate(status)}
+              onPress={() => handlePress(status)}
               disabled={updating || currentStatus === status}
             >
               <Text
