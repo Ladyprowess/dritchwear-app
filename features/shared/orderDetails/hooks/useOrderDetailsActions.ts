@@ -106,9 +106,22 @@ export function useOrderDetailsActions(
         await handleRefund();
       }
 
+      // 'in_review'/'pending' only exist post-payment in this app's lifecycle -
+      // an admin moving a still-unpaid order into one of them is confirming a
+      // payment the system missed (e.g. Paystack settled it but the automated
+      // confirmation never ran), not just relabeling it. Flip payment_status
+      // alongside order_status so the real "Payment received" email fires and
+      // the payment-pending banner/reminder clear, instead of the two fields
+      // drifting out of sync (which used to fire a false payment email with
+      // no payment behind it, and leave the reminder nagging forever).
+      const updates: Record<string, string> = { [statusField]: newStatus };
+      if (!isCustomOrder(order) && order.payment_status === 'pending_payment' && (newStatus === 'in_review' || newStatus === 'pending')) {
+        updates.payment_status = 'paid';
+      }
+
       const { error } = await supabase
         .from(table)
-        .update({ [statusField]: newStatus })
+        .update(updates)
         .eq('id', order.id);
 
       if (error) throw error;
