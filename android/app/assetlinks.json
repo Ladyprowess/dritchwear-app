@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.dritchwear.app",
+      "sha256_cert_fingerprints": [
+        "F7:81:41:84:F1:BA:3A:23:38:E9:34:3A:83:E9:70:C0:A8:86:17:5B:E1:6B:00:12:38:5E:4C:56:EC:B8:F1:F2"
+      ]
+    }
+  }
+]

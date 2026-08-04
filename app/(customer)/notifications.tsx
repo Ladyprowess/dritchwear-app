@@ -1,0 +1,483 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Bell, Package, Gift, CircleAlert as AlertCircle, CircleCheck as CheckCircle, Settings } from 'lucide-react-native';
+import NotificationDetailsModal from '@/components/NotificationDetailsModal';
+
+interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'order' | 'promo' | 'system' | 'custom';
+  is_read: boolean;
+  created_at: string;
+  url?: string | null;
+}
+
+const typeConfig = {
+  order: { icon: Package, color: '#3B82F6' },
+  promo: { icon: Gift, color: '#F59E0B' },
+  system: { icon: AlertCircle, color: '#EF4444' },
+  custom: { icon: Bell, color: '#5A2D82' },
+};
+
+export default function NotificationsScreen() {
+  const { user } = useAuth();
+  const router = useRouter();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+
+  const fetchNotifications = async () => {
+    if (!user) return;
+
+    console.log('🔍 Fetching notifications for user:', user.id);
+    
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .or(`user_id.eq.${user.id},user_id.is.null`)
+      .order('created_at', { ascending: false });
+    
+    console.log('📥 Fetched notifications:', data?.length || 0);
+    console.log('📋 Notifications data:', data);
+    
+    if (data) setNotifications(data);
+    setLoading(false);
+  };
+
+  const markAsRead = async (notificationId: string) => {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId);
+    
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id === notificationId ? { ...notif, is_read: true } : notif
+      )
+    );
+  };
+
+  const markAllAsRead = async () => {
+    const unreadIds = notifications
+      .filter(notif => !notif.is_read)
+      .map(notif => notif.id);
+    
+    if (unreadIds.length === 0) return;
+
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .in('id', unreadIds);
+    
+    setNotifications(prev =>
+      prev.map(notif => ({ ...notif, is_read: true }))
+    );
+  };
+
+  const handleNotificationPress = (notification: Notification) => {
+    setSelectedNotification(notification);
+    setShowDetailsModal(true);
+  };
+
+  const handleMarkAsReadFromModal = (notificationId: string) => {
+    markAsRead(notificationId);
+    // Update the selected notification state
+    if (selectedNotification && selectedNotification.id === notificationId) {
+      setSelectedNotification(prev => prev ? { ...prev, is_read: true } : null);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchNotifications();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+  
+    console.log('📡 Subscribing to realtime notifications for:', user.id);
+  
+    const channel = supabase
+      .channel(`notifications-screen-${user.id}`)
+  
+      // 1) Personal notifications (user_id = this user)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('🔔 REALTIME (USER) - NotificationsScreen:', payload.new);
+  
+          setNotifications((prev) => {
+            const exists = prev.some((n) => n.id === payload.new.id);
+            if (exists) return prev;
+            return [payload.new as Notification, ...prev];
+          });
+        }
+      )
+  
+      // 2) Broadcast notifications (user_id is null)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: 'user_id=is.null',
+        },
+        (payload) => {
+          console.log('🔔 REALTIME (BROADCAST) - NotificationsScreen:', payload.new);
+  
+          setNotifications((prev) => {
+            const exists = prev.some((n) => n.id === payload.new.id);
+            if (exists) return prev;
+            return [payload.new as Notification, ...prev];
+          });
+        }
+      )
+  
+      // 3) When anything updates (is_read changes), update local state
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+        },
+        (payload) => {
+          const updated = payload.new as Notification;
+  
+          // Only apply updates that belong to this user OR broadcast
+          const belongsToUserOrBroadcast =
+            (updated as any).user_id === user.id || (updated as any).user_id == null;
+  
+          if (!belongsToUserOrBroadcast) return;
+  
+          console.log('📝 REALTIME (UPDATE) - NotificationsScreen:', updated.id);
+  
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === updated.id ? { ...n, ...updated } : n))
+          );
+        }
+      )
+      .subscribe();
+  
+    return () => {
+      console.log('🧹 Unsubscribing notifications screen channel');
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+  
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+    if (diffInHours < 1) {
+      return 'Just now';
+    } else if (diffInHours < 24) {
+      return `${Math.floor(diffInHours)}h ago`;
+    } else if (diffInHours < 168) {
+      return `${Math.floor(diffInHours / 24)}d ago`;
+    } else {
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+  };
+
+  const unreadCount = notifications.filter(notif => !notif.is_read).length;
+
+  const renderNotification = (notification: Notification) => {
+    const config = typeConfig[notification.type];
+    const IconComponent = config.icon;
+
+    return (
+      <Pressable
+        key={notification.id}
+        style={[
+          styles.notificationCard,
+          !notification.is_read && styles.notificationCardUnread
+        ]}
+        onPress={() => handleNotificationPress(notification)}
+      >
+        <View style={styles.notificationHeader}>
+          <View style={[styles.iconContainer, { backgroundColor: `${config.color}20` }]}>
+            <IconComponent size={20} color={config.color} />
+          </View>
+          <View style={styles.notificationContent}>
+            <View style={styles.notificationTitleRow}>
+              <Text style={styles.notificationTitle}>{notification.title}</Text>
+              {!notification.is_read && <View style={styles.unreadDot} />}
+            </View>
+            <Text style={styles.notificationMessage} numberOfLines={2}>
+              {notification.message}
+            </Text>
+            <Text style={styles.notificationTime}>
+              {formatDate(notification.created_at)}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.headerTitle}>Notifications</Text>
+          {unreadCount > 0 && (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.headerActions}>
+          {unreadCount > 0 && (
+            <Pressable style={styles.markAllButton} onPress={markAllAsRead}>
+              <CheckCircle size={16} color="#5A2D82" />
+              <Text style={styles.markAllText}>Mark all read</Text>
+            </Pressable>
+          )}
+          <Pressable
+            accessibilityLabel="Notification settings"
+            style={styles.settingsButton}
+            onPress={() => router.push('/(customer)/notification-settings')}
+            hitSlop={8}
+          >
+            <Settings size={18} color="#5A2D82" />
+          </Pressable>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <Text style={styles.loadingText}>Loading notifications...</Text>
+          </View>
+        ) : notifications.length > 0 ? (
+          <View style={styles.notificationsContainer}>
+            {notifications.map(renderNotification)}
+          </View>
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Bell size={64} color="#D1D5DB" />
+            <Text style={styles.emptyTitle}>No Notifications</Text>
+            <Text style={styles.emptySubtitle}>
+              We&apos;ll notify you when there are updates about your orders, new promotions, and important information.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Notification Details Modal */}
+      <NotificationDetailsModal
+        notification={selectedNotification}
+        visible={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedNotification(null);
+        }}
+        onMarkAsRead={handleMarkAsReadFromModal}
+      />
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontFamily: 'Inter-Bold',
+    color: '#1F2937',
+  },
+  unreadBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 24,
+    alignItems: 'center',
+  },
+  unreadBadgeText: {
+    fontSize: 12,
+    fontFamily: 'Inter-Bold',
+    color: '#FFFFFF',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  markAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  markAllText: {
+    fontSize: 12,
+    fontFamily: 'Inter-SemiBold',
+    color: '#5A2D82',
+  },
+  settingsButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#F3EFF7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E8E3EB',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+  },
+  notificationsContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  notificationCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  notificationCardUnread: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#5A2D82',
+    backgroundColor: '#FEFBFF',
+  },
+  notificationHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  notificationTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: 'Inter-SemiBold',
+    color: '#1F2937',
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#5A2D82',
+    marginLeft: 8,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  notificationTime: {
+    fontSize: 12,
+    fontFamily: 'Inter-Regular',
+    color: '#9CA3AF',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: 'Inter-Bold',
+    color: '#1F2937',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 16,
+    fontFamily: 'Inter-Regular',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+});

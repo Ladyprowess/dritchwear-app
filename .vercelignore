@@ -1,0 +1,10 @@
+node_modules
+android
+ios
+.expo
+.expo-shared
+supabase
+*.apk
+*.aab
+*.keystore
+google-services.json

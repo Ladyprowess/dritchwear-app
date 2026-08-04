@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"JSON.parse\\(require\\(''fs''\\).readFileSync\\(''app.json'', ''utf8''\\)\\); console.log\\(''✅ app.json is valid JSON''\\)\")",
+      "WebFetch(domain:www.vtpass.com)",
+      "Bash(supabase functions:*)",
+      "Bash(supabase secrets:*)",
+      "WebFetch(domain:documenter.getpostman.com)",
+      "WebSearch"
+    ],
+    "additionalDirectories": [
+      "/Users/ladyprowess/kivora-codebase/apps/web/src/app/api/apparel/validate-promo"
+    ]
+  }
+}

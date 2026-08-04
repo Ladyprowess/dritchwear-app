@@ -1,0 +1,58 @@
+[functions.pay]
+verify_jwt = false
+
+[functions.bill-pay]
+verify_jwt = false
+
+[functions.send-gift-card-email]
+verify_jwt = false
+
+[functions.send-payment-reminder]
+verify_jwt = true
+
+[functions.send-admin-order-alert]
+verify_jwt = false
+
+[functions.send-admin-email]
+verify_jwt = true
+
+[functions.resend-webhook]
+verify_jwt = false
+
+[functions.process-scheduled-communications]
+verify_jwt = false
+
+[functions.send-push-notifications]
+verify_jwt = true
+
+[auth]
+site_url = "https://dritchwear.com"
+additional_redirect_urls = [
+  "https://dritchwear.com/auth/confirm-email",
+  "https://dritchwear.com/auth/reset-password",
+  "http://localhost:8081",
+  "dritchwear://auth/callback",
+  "dritchwear://--/auth/callback",
+  "dritchwear://callback",
+  "https://dritchwear.com",
+  "https://dist-two-sand-84.vercel.app",
+  "https://app.dritchwear.com/auth/reset-password",
+  "https://app.dritchwear.com/auth/confirm-email",
+  "https://app.dritchwear.com"
+]
+
+[auth.rate_limit]
+token_refresh = 1500
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.email.template.confirmation]
+subject = "Confirm your Dritchwear account"
+content_path = "./supabase/templates/confirmation.html"

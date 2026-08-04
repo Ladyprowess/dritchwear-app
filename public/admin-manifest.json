@@ -1,0 +1,24 @@
+{
+  "name": "Dritchwear Admin",
+  "short_name": "DW Admin",
+  "description": "Manage Dritchwear products, orders, customers and campaigns.",
+  "id": "/admin-pwa",
+  "start_url": "/?admin_pwa=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F8F7F9",
+  "theme_color": "#5A2D82",
+  "categories": ["business", "shopping", "productivity"],
+  "shortcuts": [
+    { "name": "Products", "url": "/products", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Orders", "url": "/orders", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Notifications", "url": "/notifications", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-192-maskable.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

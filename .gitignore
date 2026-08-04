@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macos
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+.env
+android/keystore.properties
+credentials.json
+
+# typescript
+*.tsbuildinfo
+dritchwear-38e7c-firebase-adminsdk-fbsvc-0902890c39.json
+dritchwear-b1bfa-firebase-adminsdk-fbsvc-ea55eab512.json
+supabase/functions/.env.local
+.vercel
+.env*
+
+# firebase config (contains project API key)
+google-services.json
+android/app/google-services.json

@@ -1,0 +1,78 @@
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.43.4";
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+const db = createClient(supabaseUrl, serviceRoleKey);
+
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status,
+  headers: { "Content-Type": "application/json" },
+});
+
+const escapeHtml = (value: string) => value
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#039;");
+
+const welcomeEmail = (firstName: string) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><title>Welcome to Dritchwear</title>
+<style>body,table,td,p,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}table,td{mso-table-lspace:0;mso-table-rspace:0}table{border-collapse:collapse!important}img{border:0;display:block;height:auto;line-height:100%;outline:none;text-decoration:none}a{color:#5A2D82}@media only screen and (max-width:620px){.outer{padding:0!important}.email{width:100%!important}.pad{padding-left:20px!important;padding-right:20px!important}.hero-title{font-size:31px!important;line-height:38px!important}.stack,.stack tbody,.stack tr,.stack td{display:block!important;width:100%!important}.product-cell{padding:0 0 14px!important}.install-cell{padding:0 0 18px!important}.button{display:block!important;text-align:center!important}}</style></head>
+<body style="margin:0;padding:0;background:#F8F7F9;font-family:Arial,'Helvetica Neue',sans-serif;color:#17131C"><div style="display:none;max-height:0;overflow:hidden;opacity:0">Your Dritchwear account is ready. Discover streetwear, merchandise, gift cards and custom orders.</div>
+<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="background:#F8F7F9"><tr><td class="outer" align="center" style="padding:32px 12px"><table class="email" width="640" role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;background:#FFFFFF;border:1px solid #E8E3EB">
+<tr><td class="pad" style="padding:24px 32px;background:#5A2D82"><a href="https://dritchwear.com" style="color:#FFFFFF;text-decoration:none;font-size:22px;font-weight:700;letter-spacing:1.8px">DRITCHWEAR</a></td></tr>
+<tr><td class="pad" style="padding:48px 32px 42px;background:#32154E"><div style="font-size:11px;font-weight:700;letter-spacing:1.7px;color:#FDB813">WELCOME TO DRITCHWEAR</div><h1 class="hero-title" style="margin:14px 0 18px;font-family:Georgia,'Times New Roman',serif;font-size:40px;line-height:48px;color:#FFFFFF">Your account is ready.<br><span style="color:#FDB813">Let’s make something good.</span></h1><p style="margin:0;max-width:520px;font-size:15px;line-height:25px;color:#E8DDF0">Hi ${escapeHtml(firstName)}, welcome to Dritchwear Collections. You can now order streetwear and merchandise, request custom production, send gift cards, save favourites and track every order from one place.</p><table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:26px"><tr><td bgcolor="#FDB813" style="border-radius:8px"><a class="button" href="https://app.dritchwear.com/shop" style="display:inline-block;padding:14px 22px;color:#32154E;text-decoration:none;font-size:13px;font-weight:700">EXPLORE THE COLLECTION</a></td></tr></table></td></tr>
+<tr><td class="pad" style="padding:34px 32px"><div style="padding:26px;background:#F3EFF7;border-left:4px solid #FDB813"><div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:1;color:#5A2D82">“</div><p style="margin:8px 0 13px;font-size:15px;line-height:25px;color:#312C35">I built Dritchwear to make ordering quality streetwear, branded merchandise and custom pieces feel personal-not confusing. Whether you already know exactly what you want or need help shaping the idea, my team is here.</p><p style="margin:0;font-size:13px;line-height:21px;color:#665F6C"><strong style="color:#17131C">Lady Prowess</strong><br>Founder, Dritchwear Collections</p></div></td></tr>
+<tr><td class="pad" style="padding:8px 32px 22px"><div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#5A2D82">START HERE</div><h2 style="margin:8px 0 6px;font-size:24px;line-height:31px;color:#17131C">More than a standard clothing store</h2><p style="margin:0;font-size:14px;line-height:22px;color:#665F6C">Choose a ready product or start with your own idea.</p></td></tr>
+<tr><td class="pad" style="padding:0 32px 34px"><table class="stack" width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr><td class="product-cell" width="50%" valign="top" style="padding:0 8px 16px 0"><a href="https://app.dritchwear.com/shop" style="display:block;height:100%;text-decoration:none;border:1px solid #E8E3EB;background:#FFFFFF"><img src="https://raw.githubusercontent.com/Ladyprowess/store-image/main/dritch/41-4.png" width="280" height="210" alt="Dritchwear hoodie" style="width:100%;max-width:280px;height:210px;object-fit:cover"><div style="padding:16px"><div style="font-size:10px;font-weight:700;letter-spacing:1.1px;color:#5A2D82">STREETWEAR</div><div style="margin-top:6px;font-size:15px;font-weight:700;color:#17131C">Shop the collection</div><div style="margin-top:5px;font-size:12px;line-height:18px;color:#665F6C">Hoodies, tees, polos, jackets, sets and everyday essentials.</div></div></a></td><td class="product-cell" width="50%" valign="top" style="padding:0 0 16px 8px"><a href="https://app.dritchwear.com/custom-order" style="display:block;height:100%;text-decoration:none;border:1px solid #E8E3EB;background:#FFFFFF"><img src="https://raw.githubusercontent.com/Ladyprowess/store-image/main/images/branded-flask-1.jpg" width="280" height="210" alt="Dritchwear branded merchandise" style="width:100%;max-width:280px;height:210px;object-fit:cover"><div style="padding:16px"><div style="font-size:10px;font-weight:700;letter-spacing:1.1px;color:#5A2D82">CUSTOM PRODUCTION</div><div style="margin-top:6px;font-size:15px;font-weight:700;color:#17131C">Bring your idea</div><div style="margin-top:5px;font-size:12px;line-height:18px;color:#665F6C">Event kits, corporate merchandise, team wear and branded pieces.</div></div></a></td></tr></table></td></tr>
+<tr><td class="pad" style="padding:34px 32px;background:#F3EFF7;border-top:1px solid #DED3E6"><div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#5A2D82">YOUR ACCOUNT</div><table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:18px"><tr><td width="34" valign="top"><div style="width:27px;height:27px;line-height:27px;text-align:center;border-radius:50%;background:#FDB813;color:#32154E;font-size:12px;font-weight:700">1</div></td><td style="padding:2px 0 18px 10px;font-size:14px;line-height:22px;color:#312C35"><strong>Save favourites.</strong> Tap the heart on products you want to revisit.</td></tr><tr><td width="34" valign="top"><div style="width:27px;height:27px;line-height:27px;text-align:center;border-radius:50%;background:#FDB813;color:#32154E;font-size:12px;font-weight:700">2</div></td><td style="padding:2px 0 18px 10px;font-size:14px;line-height:22px;color:#312C35"><strong>Choose how to pay.</strong> Use your wallet, card, or send a Pay for Me link to someone else.</td></tr><tr><td width="34" valign="top"><div style="width:27px;height:27px;line-height:27px;text-align:center;border-radius:50%;background:#FDB813;color:#32154E;font-size:12px;font-weight:700">3</div></td><td style="padding:2px 0 0 10px;font-size:14px;line-height:22px;color:#312C35"><strong>Stay informed.</strong> Track orders and enable notifications for payment and delivery updates.</td></tr></table></td></tr>
+<tr><td class="pad" style="padding:32px;border-top:1px solid #E8E3EB"><div style="font-size:21px;font-weight:700;color:#17131C">Install Dritchwear for the best experience</div><p style="margin:8px 0 20px;font-size:14px;line-height:22px;color:#665F6C">Add Dritchwear to your home screen for quicker ordering and easier tracking.</p><table class="stack" width="100%" role="presentation"><tr><td class="install-cell" width="50%" valign="top" style="padding-right:16px;font-size:13px;line-height:21px;color:#514A56"><strong style="display:block;margin-bottom:5px;color:#17131C">iPhone</strong>Open <a href="https://app.dritchwear.com">app.dritchwear.com</a> in Safari, tap Share, then Add to Home Screen.</td><td class="install-cell" width="50%" valign="top" style="padding-left:16px;font-size:13px;line-height:21px;color:#514A56"><strong style="display:block;margin-bottom:5px;color:#17131C">Android</strong>Open the app in Chrome, tap the menu, then Install app or Add to Home Screen.</td></tr></table></td></tr>
+<tr><td class="pad" style="padding:30px 32px;background:#32154E;text-align:left"><div style="font-size:18px;font-weight:700;color:#FFFFFF">Need help getting started?</div><p style="margin:8px 0 16px;font-size:13px;line-height:21px;color:#DCCFE6">For sizing, custom designs, orders or account support, speak with the Dritchwear team.</p><a href="mailto:support@dritchwear.com" style="color:#FDB813;font-size:13px;font-weight:700;text-decoration:none">support@dritchwear.com</a></td></tr>
+<tr><td class="pad" style="padding:28px 32px;background:#FFFFFF;text-align:left;border-top:1px solid #E8E3EB"><div style="font-size:16px;font-weight:700;color:#17131C">Dritchwear Collections</div><div style="margin-top:11px;font-size:12px;line-height:20px"><a href="https://app.dritchwear.com/shop">Shop</a> &nbsp;·&nbsp; <a href="https://app.dritchwear.com/orders">Track orders</a> &nbsp;·&nbsp; <a href="https://app.dritchwear.com/gift-cards">Gift cards</a> &nbsp;·&nbsp; <a href="https://dritchwear.com">Website</a></div><div style="margin-top:10px;font-size:11px;line-height:18px;color:#746D79">You received this operational welcome email because an account was created successfully with this address.<br>© 2026 Dritchwear Collections. All rights reserved.</div></td></tr>
+</table></td></tr></table></body></html>`;
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+  if (!resendApiKey || !supabaseUrl || !serviceRoleKey) return json({ error: "Email service is not configured" }, 500);
+
+  const input = await req.json().catch(() => ({})) as { userId?: string };
+  const userId = String(input.userId ?? "");
+  if (!userId) return json({ error: "Missing user id" }, 400);
+
+  const { data: authResult, error: authError } = await db.auth.admin.getUserById(userId);
+  const user = authResult?.user;
+  if (authError || !user?.email) return json({ error: "Confirmed user not found" }, 404);
+  if (!user.email_confirmed_at) return json({ error: "Email is not confirmed" }, 409);
+
+  const { data: previous } = await db.from("welcome_email_deliveries").select("status,resend_email_id").eq("user_id", userId).maybeSingle();
+  if (previous?.status === "sent") return json({ success: true, alreadyDelivered: true, emailId: previous.resend_email_id });
+
+  const metadataName = String(user.user_metadata?.full_name ?? "").trim();
+  const firstName = metadataName.split(/\s+/)[0] || "there";
+  await db.from("welcome_email_deliveries").upsert({ user_id: userId, email: user.email, status: "processing", last_error: null }, { onConflict: "user_id" });
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: "Dritchwear <noreply@dritchwear.com>",
+      reply_to: "support@dritchwear.com",
+      to: [user.email],
+      subject: "Welcome to Dritchwear - your account is ready",
+      html: welcomeEmail(firstName),
+    }),
+  });
+
+  const result = await response.json().catch(() => ({})) as { id?: string; message?: string };
+  if (!response.ok) {
+    const message = result.message || "Resend rejected the welcome email";
+    await db.from("welcome_email_deliveries").update({ status: "failed", last_error: message }).eq("user_id", userId);
+    return json({ error: message }, 502);
+  }
+
+  await db.from("welcome_email_deliveries").update({ status: "sent", sent_at: new Date().toISOString(), resend_email_id: result.id ?? null, last_error: null }).eq("user_id", userId);
+  return json({ success: true, emailId: result.id ?? null });
+});
