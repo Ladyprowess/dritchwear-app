@@ -273,7 +273,7 @@ function SideDrawer({
 // Layout
 // ---------------------------------------------------------------------------
 export default function CustomerLayout() {
-  const { user, profile, loading, isInitialized } = useAuth();
+  const { user, profile, loading, isInitialized, profileLoaded } = useAuth();
   const router = useRouter();
   const [unreadCount, setUnreadCount]     = useState(0);
   const [showBanner,  setShowBanner]      = useState(false);
@@ -379,6 +379,11 @@ export default function CustomerLayout() {
   }, [loading, user, router]);
 
   if (!isInitialized) return null;
+  // Wait for the profile fetch to resolve before committing to the customer
+  // UI - otherwise an admin briefly sees this screen (profile still null,
+  // so the check below can't catch it yet) before getting redirected once
+  // the profile loads. Guests (no user) skip this and render immediately.
+  if (user && !profileLoaded) return null;
   if (profile?.role === 'admin') return <Redirect href="/(admin)" />;
 
   // Fallback: if native + no user and effect hasn't fired yet, show nothing

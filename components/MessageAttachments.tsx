@@ -1,6 +1,6 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Image, Linking } from 'react-native';
-import { FileText, Download } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Pressable, Image, Linking, Modal, SafeAreaView } from 'react-native';
+import { FileText, Download, X } from 'lucide-react-native';
 import { isImage, humanSize, type AttachmentRow } from '@/lib/attachments';
 
 const BRAND_PURPLE = '#5A2D82';
@@ -11,8 +11,11 @@ interface Props {
 }
 
 // Renders a message's attachments: images as thumbnails, documents as a chip
-// with icon, filename and size. Tapping opens/downloads via the signed URL.
+// with icon, filename and size. Images open in an in-app full-screen viewer;
+// documents download/open via the signed URL (Linking is fine there since
+// the OS/browser needs to hand the file to a viewer we don't provide).
 export default function MessageAttachments({ attachments, mine }: Props) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   if (!attachments || attachments.length === 0) return null;
   const open = (url?: string) => { if (url) Linking.openURL(url); };
 
@@ -21,7 +24,7 @@ export default function MessageAttachments({ attachments, mine }: Props) {
       {attachments.map((a) => {
         if (isImage(a.mime_type) && a.signedUrl) {
           return (
-            <Pressable key={a.id} onPress={() => open(a.signedUrl)} style={styles.imageWrap}>
+            <Pressable key={a.id} onPress={() => setPreviewUrl(a.signedUrl!)} style={styles.imageWrap}>
               <Image source={{ uri: a.signedUrl }} style={styles.image} resizeMode="cover" />
             </Pressable>
           );
@@ -39,6 +42,18 @@ export default function MessageAttachments({ attachments, mine }: Props) {
           </Pressable>
         );
       })}
+
+      <Modal visible={!!previewUrl} transparent animationType="fade" onRequestClose={() => setPreviewUrl(null)}>
+        <SafeAreaView style={styles.previewBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setPreviewUrl(null)} />
+          <Pressable style={styles.previewClose} onPress={() => setPreviewUrl(null)}>
+            <X size={22} color="#FFFFFF" />
+          </Pressable>
+          {previewUrl && (
+            <Image source={{ uri: previewUrl }} style={styles.previewImage} resizeMode="contain" />
+          )}
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -56,4 +71,7 @@ const styles = StyleSheet.create({
   docSize: { fontSize: 11, fontFamily: 'Inter-Regular', color: '#8B8391', marginTop: 1 },
   docTextMine: { color: '#FFFFFF' },
   docSubMine: { color: 'rgba(255,255,255,0.75)' },
+  previewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', alignItems: 'center', justifyContent: 'center' },
+  previewImage: { width: '100%', height: '100%' },
+  previewClose: { position: 'absolute', top: 16, right: 16, zIndex: 1, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
 });
