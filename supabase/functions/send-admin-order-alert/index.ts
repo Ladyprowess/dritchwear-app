@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.43.4";
 import webpush from "npm:web-push@3.6.7";
+import { esc, p, emailShell } from "../_shared/emailBrand.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -93,9 +94,17 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Email service is not configured" }, 503);
   }
 
+  const html = emailShell({
+    eyebrow: "New Order Alert",
+    headline: esc(alert.title),
+    bodyHtml: p(esc(alert.message), 18),
+    ctaPrimaryLabel: "Open Admin Orders",
+    ctaPrimaryUrl: "https://app.dritchwear.com/orders",
+    footerNote: "This operational alert was sent because a new order reached Dritchwear.",
+  });
+
   let emailCount = 0;
   for (const email of emails) {
-      const html = `<!doctype html><html><body style="margin:0;background:#f4f1f6;font-family:Arial,sans-serif;color:#17131c"><table width="100%" role="presentation"><tr><td align="center" style="padding:28px 12px"><table width="600" role="presentation" style="width:100%;max-width:600px;background:#fff;border-collapse:collapse"><tr><td style="padding:24px 28px;background:#5a2d82;color:#fff;font-size:21px;font-weight:700">DRITCHWEAR ADMIN</td></tr><tr><td style="padding:32px 28px;text-align:left"><div style="font-size:12px;font-weight:700;letter-spacing:1.2px;color:#5a2d82">NEW ORDER ALERT</div><h1 style="font-size:24px;line-height:1.25;margin:9px 0 10px">${alert.title}</h1><p style="font-size:15px;line-height:1.7;color:#665f6c">${alert.message}</p><a href="https://app.dritchwear.com/orders" style="display:inline-block;margin-top:8px;padding:13px 20px;background:#5a2d82;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">OPEN ADMIN ORDERS</a></td></tr><tr><td style="padding:22px 28px;background:#f8f7f9;text-align:left;font-size:12px;line-height:1.7;color:#746d79">This operational alert was sent because a new order reached Dritchwear.<br/>support@dritchwear.com</td></tr></table></td></tr></table></body></html>`;
       const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `admin-order-alert/${alert.id}/${email}` }, body: JSON.stringify({ from: "Dritchwear Orders <noreply@dritchwear.com>", reply_to: "support@dritchwear.com", to: [email], subject: `Dritchwear: ${alert.title}`, html }) }).catch(() => null);
       if (response?.ok) emailCount++;
   }

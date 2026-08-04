@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart, CartItem } from '@/contexts/CartContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import OrderDetailsModal from '@/features/shared/orderDetails/components/OrderDetailsModal';
 
 import type { Order, OrderNotice as OrderNoticeType } from '@/features/customer/orders/types';
@@ -17,10 +17,16 @@ import { PaystackPaymentModal } from '@/features/customer/orders/components/Pays
 import { PaymentChoiceModal } from '@/features/customer/orders/components/PaymentChoiceModal';
 import { styles } from '@/features/customer/orders/styles';
 
+const firstParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+
 export default function CustomerOrdersScreen() {
   const { user, profile, refreshProfile } = useAuth();
   const { addToCart } = useCart();
   const router = useRouter();
+  const params = useLocalSearchParams();
+  const deepLinkOrderId = firstParam(params.orderId as string | string[] | undefined);
+  const openedDeepLinkRef = useRef(false);
 
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
@@ -68,6 +74,20 @@ export default function CustomerOrdersScreen() {
     setSelectedOrder(order);
     setShowOrderModal(true);
   };
+
+  // Supports emailed links like /orders?orderId=<id> (payment reminders,
+  // status updates) opening straight into that order instead of dropping the
+  // customer on the bare list. Only fires once per link, even if
+  // filteredOrders updates again later (e.g. a realtime refresh).
+  useEffect(() => {
+    if (!deepLinkOrderId || openedDeepLinkRef.current) return;
+    const match = filteredOrders.find((order) => order.id === deepLinkOrderId);
+    if (!match) return;
+    openedDeepLinkRef.current = true;
+    handleOrderPress(match);
+    router.setParams({ orderId: undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkOrderId, filteredOrders]);
 
   const handleRepeatOrder = async (order: Order) => {
     if (!order.items || order.items.length === 0) return;

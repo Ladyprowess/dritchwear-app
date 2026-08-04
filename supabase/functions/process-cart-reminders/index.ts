@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.43.4";
+import { esc, p, emailShell } from "../_shared/emailBrand.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -23,7 +24,14 @@ async function sendPush(userId: string, title: string, message: string) {
 async function sendEmail(to: string, name: string, itemCount: number, subtotal: number, stage: number) {
   if (!RESEND_API_KEY || !to) return false;
   const subject = stage === 3 ? "Your Dritchwear cart is still saved" : "You left something good in your cart";
-  const html = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f4f1f6;font-family:Arial,sans-serif;color:#17131c"><table width="100%" role="presentation"><tr><td align="center" style="padding:28px 12px"><table width="600" role="presentation" style="width:100%;max-width:600px;background:#fff;border-collapse:collapse"><tr><td style="padding:24px;background:#5a2d82;color:#fff;text-align:center;font-size:22px;font-weight:700">DRITCHWEAR</td></tr><tr><td style="padding:34px 28px"><h1 style="margin:0;font-size:25px">Your cart is waiting, ${name || "there"}</h1><p style="font-size:15px;line-height:1.7;color:#665f6c">You saved ${itemCount} ${itemCount === 1 ? "item" : "items"} worth ₦${Number(subtotal).toLocaleString("en-NG")}. Stock can change, so return when you are ready.</p><a href="https://app.dritchwear.com/cart" style="display:inline-block;margin-top:8px;padding:14px 22px;background:#5a2d82;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">RETURN TO CART</a></td></tr><tr><td style="padding:24px 28px;background:#f8f7f9;text-align:center;font-size:12px;line-height:1.7;color:#665f6c">Need help? <a href="mailto:support@dritchwear.com" style="color:#5a2d82">support@dritchwear.com</a><br/>Manage cart reminder emails in Dritchwear Notification Settings.<br/>© ${new Date().getUTCFullYear()} Dritchwear Collections</td></tr></table></td></tr></table></body></html>`;
+  const html = emailShell({
+    eyebrow: "Your Cart",
+    headline: `Your cart is waiting, ${esc(name || "there")}`,
+    bodyHtml: p(`You saved ${itemCount} ${itemCount === 1 ? "item" : "items"} worth ₦${Number(subtotal).toLocaleString("en-NG")}. Stock can change, so return when you're ready.`, 18),
+    ctaPrimaryLabel: "Return to Cart",
+    ctaPrimaryUrl: "https://app.dritchwear.com/cart",
+    footerNote: "Manage cart reminder emails in your Dritchwear notification settings.",
+  });
   const response = await fetch("https://api.resend.com/emails", { method: "POST", headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ from: "Dritchwear <noreply@dritchwear.com>", reply_to: "support@dritchwear.com", to: [to], subject, html }) });
   return response.ok;
 }

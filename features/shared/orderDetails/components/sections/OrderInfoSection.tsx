@@ -68,7 +68,7 @@ export function OrderInfoSection({ order, isAdmin, sendingReminder, onSendPaymen
           </View>
         </View>
 
-        {isAdmin && !custom && order.payment_status === 'pending_payment' && (
+        {isAdmin && !custom && order.payment_status === 'pending_payment' && order.order_status !== 'cancelled' && (
           <View style={styles.reminderCard}>
             <View style={styles.infoContent}>
               <Text style={styles.reminderTitle}>Payment pending</Text>

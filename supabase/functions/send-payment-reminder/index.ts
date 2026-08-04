@@ -7,6 +7,7 @@
 // Deploy: supabase functions deploy send-payment-reminder
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.43.4";
+import { esc, p, emailShell } from "../_shared/emailBrand.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -22,15 +23,19 @@ const cors = {
 const json = (body: Record<string, unknown>, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...cors } });
 
-const escapeHtml = (value: string) =>
-  value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-
 const formatNaira = (amount: number) =>
   "₦" + (Number(amount) || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function buildHtml(opts: { name: string; amount: string; payUrl: string }) {
-  const name = escapeHtml(opts.name);
-  return `<!doctype html><html><body style="margin:0;background:#f4f1f6;font-family:Arial,sans-serif;color:#17131c"><table width="100%" role="presentation"><tr><td align="center" style="padding:28px 12px"><table width="600" role="presentation" style="width:100%;max-width:600px;background:#fff;border-collapse:collapse"><tr><td style="padding:24px 28px;background:#5a2d82;color:#fff;font-size:21px;font-weight:700">DRITCHWEAR</td></tr><tr><td style="padding:32px 28px;text-align:left"><div style="font-size:12px;font-weight:700;letter-spacing:1.2px;color:#5a2d82">COMPLETE YOUR PAYMENT</div><h1 style="font-size:23px;line-height:1.3;margin:9px 0 10px">Hi ${name}, your order is waiting</h1><p style="font-size:15px;line-height:1.7;color:#665f6c">You placed an order of <strong>${escapeHtml(opts.amount)}</strong>, but payment hasn't been completed yet. Your items are reserved - finish checkout to confirm your order.</p><a href="${opts.payUrl}" style="display:inline-block;margin-top:10px;padding:13px 22px;background:#5a2d82;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">COMPLETE PAYMENT</a></td></tr><tr><td style="padding:22px 28px;background:#f8f7f9;text-align:left;font-size:12px;line-height:1.7;color:#746d79">Already paid? You can ignore this email.<br/>support@dritchwear.com</td></tr></table></td></tr></table></body></html>`;
+  const name = esc(opts.name);
+  return emailShell({
+    eyebrow: "Complete Your Payment",
+    headline: `Hi ${name}, your order is waiting`,
+    bodyHtml: p(`You placed an order of <strong>${esc(opts.amount)}</strong>, but payment hasn't been completed yet. Your items are reserved - finish checkout to confirm your order.`, 18),
+    ctaPrimaryLabel: "Complete Payment",
+    ctaPrimaryUrl: opts.payUrl,
+    footerNote: "Already paid? You can safely ignore this email.",
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -48,7 +53,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: order } = await db
     .from("orders")
-    .select("id,user_id,total,payment_status")
+    .select("id,user_id,total,payment_status,order_status")
     .eq("id", orderId)
     .single();
   if (!order) return json({ error: "Order not found" }, 404);
@@ -66,8 +71,11 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Only an admin can send a manual reminder" }, 403);
   }
 
-  // Never nag about an order that is already paid.
-  if (order.payment_status !== "pending_payment") {
+  // Never nag about an order that is already paid, or one that's been
+  // cancelled - cancelling an order that was never paid doesn't touch
+  // payment_status (it stays 'pending_payment' forever), so order_status
+  // needs its own check here rather than relying on payment_status alone.
+  if (order.payment_status !== "pending_payment" || order.order_status === "cancelled") {
     return json({ success: true, skipped: "not_pending" });
   }
 
@@ -77,13 +85,15 @@ Deno.serve(async (req: Request) => {
     .eq("id", order.user_id)
     .single();
 
-  // Prefer the pay-for-me link if one exists; otherwise send them to orders.
+  // Prefer the pay-for-me link if one exists (regular card-checkout orders
+  // don't have one - Paystack there needs the app open, not a standalone
+  // page); otherwise deep-link straight to this order instead of the bare list.
   const { data: link } = await db
     .from("payment_links")
     .select("token")
     .eq("order_id", orderId)
     .maybeSingle();
-  const payUrl = link?.token ? `${PUBLIC_ORIGIN}/pay/${link.token}` : `${PUBLIC_ORIGIN}/orders`;
+  const payUrl = link?.token ? `${PUBLIC_ORIGIN}/pay/${link.token}` : `${PUBLIC_ORIGIN}/orders?orderId=${orderId}`;
   const amount = formatNaira(order.total);
 
   if (!profileRow?.email) return json({ error: "Customer email is unavailable" }, 422);

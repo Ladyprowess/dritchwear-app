@@ -470,6 +470,17 @@ export function usePaymentOrchestration({
             return;
           }
 
+          // Fire the same "complete your payment" email pay-for-me links
+          // already send on creation - best-effort, doesn't block opening
+          // Paystack. Covers the case where the customer closes the popup
+          // before paying: they still get a reminder immediately rather
+          // than only if/when an admin later notices and sends one manually.
+          supabase.functions.invoke('send-payment-reminder', {
+            body: { orderId: orderRecord.id, source: 'initial' },
+          }).then(({ error }) => {
+            if (error) console.error('Initial payment reminder failed:', error.message);
+          }).catch((error) => console.error('Initial payment reminder failed:', error));
+
           setOrderData({
             ...orderTotals,
             id: orderRecord.id,
