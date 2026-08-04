@@ -36,15 +36,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   assetBundlePatterns: ['**/*'],
 
   ios: {
+    ...config.ios,
     supportsTablet: true,
     bundleIdentifier: 'com.dritchwear.app',
   },
 
   android: {
+    ...config.android,
     package: 'com.dritchwear.app',
     googleServicesFile: './google-services.json',
     softwareKeyboardLayoutMode: 'resize',
-    versionCode: 165,
+    versionCode: 167,
     adaptiveIcon: {
       foregroundImage: './assets/images/adaptive-icon.png',
       backgroundColor: '#FFFFFF',

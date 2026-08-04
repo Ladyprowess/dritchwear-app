@@ -39,7 +39,7 @@
     },
     "android": {
       "package": "com.dritchwear.app",
-      "versionCode": 165,
+      "versionCode": 167,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -126,7 +126,10 @@
     },
     "owner": "ladyprow",
     "updates": {
-      "url": "https://u.expo.dev/a4790542-c5a5-49ed-9721-562bb575964d"
+      "url": "https://u.expo.dev/a4790542-c5a5-49ed-9721-562bb575964d",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }
