@@ -6,7 +6,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   name: 'Dritchwear',
   slug: 'dritchwear',
   version: '1.0.0',
-  orientation: 'default',
+  orientation: 'portrait',
 
   icon: './assets/images/icon.png',
 
@@ -27,7 +27,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
 
   androidNavigationBar: {
-    visible: 'visible',
     barStyle: 'dark-content',
     backgroundColor: '#F9FAFB',
   },
@@ -69,7 +68,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     themeColor: '#5A2D82',
     backgroundColor: '#F9FAFB',
     display: 'standalone',
-    orientation: 'default',
+    orientation: 'portrait',
     lang: 'en',
     startUrl: '/',
   },

@@ -84,37 +84,15 @@ export function useOrderDetailsActions(
     ]);
   };
 
+  // Runs as one atomic DB transaction (wallet credit + transaction record +
+  // payment_status flip, all-or-nothing) so a partial failure can never
+  // leave the wallet credited without the order reflecting it - which used
+  // to make a retry double-credit the customer. Also idempotent: calling it
+  // again on an already-refunded order is a safe no-op.
   const handleRefund = async () => {
-    if (!order?.profiles) return;
-
-    const { error: walletError } = await supabase
-      .from('profiles')
-      .update({
-        wallet_balance: (order.profiles.wallet_balance ?? 0) + (order.total ?? 0)
-      })
-      .eq('id', order.user_id);
-
-    if (walletError) throw walletError;
-
-    const { error: transactionError } = await supabase
-      .from('transactions')
-      .insert({
-        user_id: order.user_id,
-        type: 'credit',
-        amount: order.total,
-        description: `Refund for cancelled order #${order.id.toString().substring(0, 8)}`,
-        reference: order.id,
-        status: 'completed'
-      });
-
-    if (transactionError) throw transactionError;
-
-    const { error: paymentError } = await supabase
-      .from('orders')
-      .update({ payment_status: 'refunded' })
-      .eq('id', order.id);
-
-    if (paymentError) throw paymentError;
+    if (!order) return;
+    const { error } = await supabase.rpc('refund_order_to_wallet', { p_order_id: order.id });
+    if (error) throw error;
   };
 
   const handleStatusUpdate = async (newStatus: string) => {

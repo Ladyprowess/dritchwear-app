@@ -1,9 +1,12 @@
-// Enforces the 7-day delivery guarantee: any paid order confirmed more than
-// 7 days ago that still isn't Delivered/Completed/Cancelled gets an
-// automatic ₦1,000 wallet credit, once per order. Runs on a cron schedule
-// (see the accompanying migration) - admin can also grant this manually via
+// DISABLED (see 202608040009_disable_auto_late_delivery_credit.sql): delivery
+// often goes through a pickup point, so an order can arrive well within 7
+// days while the customer just hasn't collected it yet - auto-crediting off
+// order_status alone penalized the store for delays that weren't its fault.
+// The cron schedule that invoked this has been unscheduled; the function is
+// left deployed but dormant. The ₦1,000 credit is now admin-judgment-only via
 // the "Give ₦1,000 Late Delivery Credit" button in Order Details, which sets
-// the same late_delivery_credit_at flag so this job never double-credits.
+// the same late_delivery_credit_at flag this job checks, so if this were ever
+// rescheduled it still couldn't double-credit an order the button already paid.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
 

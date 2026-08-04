@@ -1,0 +1,11 @@
+-- Delivery often goes through a pickup point (park/depot) rather than
+-- doorstep handoff - an item can arrive well within 7 days, but the
+-- customer may take days or weeks to actually collect it. Auto-crediting
+-- ₦1,000 whenever an order isn't marked Delivered within 7 days would
+-- penalize the store for a delay that's on the customer, not fulfillment.
+--
+-- The 7-day guarantee is now admin-judgment-only: the "Give ₦1,000 Late
+-- Delivery Credit" button in Order Details (useOrderDetailsActions.ts)
+-- still works exactly as before and is unaffected by this - it calls
+-- credit_wallet() directly and never depended on this cron job.
+DO $$ BEGIN PERFORM cron.unschedule('dritchwear-check-late-deliveries'); EXCEPTION WHEN OTHERS THEN NULL; END $$;

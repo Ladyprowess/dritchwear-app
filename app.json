@@ -4,7 +4,7 @@
     "slug": "dritchwear",
     "version": "1.0.0",
     "runtimeVersion": "1.0.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "dritchwear",
     "userInterfaceStyle": "automatic",
@@ -14,7 +14,6 @@
       "translucent": true
     },
     "androidNavigationBar": {
-      "visible": "immersive",
       "backgroundColor": "#000000"
     },
     "splash": {

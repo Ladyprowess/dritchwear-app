@@ -16,7 +16,9 @@ const ACTIVE_STATUSES = ['confirmed', 'processing', 'shipped'];
 
 export function DeliverySection({ order, isAdmin, givingCredit, onGiveLateDeliveryCredit }: DeliverySectionProps) {
   const hasTracking = !!order.tracking_number;
-  const eligibleForGuarantee = order.payment_status === 'paid' && ACTIVE_STATUSES.includes(order.order_status || '');
+  const daysSinceConfirmed = order.confirmed_at ? Math.floor((Date.now() - new Date(order.confirmed_at).getTime()) / (24 * 60 * 60 * 1000)) : 0;
+  const isOverdue = !!order.confirmed_at && daysSinceConfirmed >= 7;
+  const eligibleForGuarantee = order.payment_status === 'paid' && ACTIVE_STATUSES.includes(order.order_status || '') && isOverdue;
   const alreadyCredited = !!order.late_delivery_credit_at;
 
   if (!hasTracking && !eligibleForGuarantee && !alreadyCredited) return null;
@@ -53,7 +55,7 @@ export function DeliverySection({ order, isAdmin, givingCredit, onGiveLateDelive
           <View style={local.guaranteeCard}>
             <Gift size={18} color="#B45309" />
             <Text style={local.guaranteeText}>
-              7-day delivery guarantee: if this order isn't delivered within 7 days of confirmation, the customer gets a ₦1,000 wallet credit.
+              This order was confirmed more than 7 days ago. If the delay is on us (not a pending pickup), consider crediting ₦1,000 as goodwill below.
             </Text>
           </View>
         ) : null}
