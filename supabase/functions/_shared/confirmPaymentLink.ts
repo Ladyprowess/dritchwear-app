@@ -36,6 +36,19 @@ export function tokenFromMetadata(metadata: unknown): string {
   return field?.value ? String(field.value).trim() : '';
 }
 
+// Paystack's Nigeria account settings can put the transaction fee on the
+// customer, in which case the amount actually captured (and returned by
+// verify) is the order total PLUS Paystack's cut (~1.5% + NGN100, capped at
+// NGN2000) - never less than what we asked for, but always a bit more. A
+// strict equality check here rejects every genuine successful payment, so
+// this allows an amount at or above expected, up to a generous cushion
+// (2% + NGN200) over the standard fee so a real mismatch still gets caught.
+export function amountMatchesExpected(paidKobo: number, expectedKobo: number): boolean {
+  if (paidKobo < expectedKobo) return false;
+  const cushion = Math.round(expectedKobo * 0.02) + 20000;
+  return paidKobo <= expectedKobo + cushion;
+}
+
 export async function confirmPaymentLink(
   supabase: SupabaseClient,
   opts: ConfirmPaymentLinkOptions
@@ -89,8 +102,12 @@ export async function confirmPaymentLink(
     return { success: false, status: 402, error: 'Paystack could not verify this payment' };
   }
   const expectedKobo = Math.round(Number(plink.amount_ngn || 0) * 100);
-  if (verification.data.currency !== 'NGN' || Number(verification.data.amount) !== expectedKobo) {
-    return { success: false, status: 409, error: 'Verified payment amount does not match this order' };
+  if (verification.data.currency !== 'NGN' || !amountMatchesExpected(Number(verification.data.amount), expectedKobo)) {
+    return {
+      success: false,
+      status: 409,
+      error: `Verified payment amount does not match this order (expected >= ${expectedKobo} kobo, got ${verification.data.amount} ${verification.data.currency})`,
+    };
   }
   if (verification.data.reference !== reference) {
     return { success: false, status: 409, error: 'Payment reference mismatch' };

@@ -101,5 +101,5 @@ Deno.serve(async (req: Request) => {
     console.error('reconcile-pending-payments: some settlements failed', failures);
   }
 
-  return json({ checked, settled: settled.length, failed: failures.length });
+  return json({ checked, settled: settled.length, failed: failures.length, failures });
 });

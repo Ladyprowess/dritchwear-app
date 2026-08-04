@@ -7,7 +7,7 @@
 // the paying browser/app never calls back after a successful charge.
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.43.4';
-import { tokenFromMetadata } from './confirmPaymentLink.ts';
+import { tokenFromMetadata, amountMatchesExpected } from './confirmPaymentLink.ts';
 
 export { tokenFromMetadata };
 
@@ -71,8 +71,12 @@ export async function confirmCheckoutOrder(
     return { success: false, status: 402, error: 'Paystack could not verify this payment' };
   }
   const expectedKobo = Math.round(Number(order.total || 0) * 100);
-  if (verification.data.currency !== 'NGN' || Number(verification.data.amount) !== expectedKobo) {
-    return { success: false, status: 409, error: 'Verified payment amount does not match this order' };
+  if (verification.data.currency !== 'NGN' || !amountMatchesExpected(Number(verification.data.amount), expectedKobo)) {
+    return {
+      success: false,
+      status: 409,
+      error: `Verified payment amount does not match this order (expected >= ${expectedKobo} kobo, got ${verification.data.amount} ${verification.data.currency})`,
+    };
   }
   if (verification.data.reference !== reference) {
     return { success: false, status: 409, error: 'Payment reference mismatch' };
