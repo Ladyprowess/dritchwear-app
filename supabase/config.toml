@@ -31,6 +31,9 @@ verify_jwt = false
 [functions.confirm-order-payment]
 verify_jwt = true
 
+[functions.retry-stuck-alerts]
+verify_jwt = false
+
 [functions.process-scheduled-communications]
 verify_jwt = false
 
