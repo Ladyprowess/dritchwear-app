@@ -36,6 +36,7 @@ export function CheckoutPaystackModal({ visible, orderData, userEmail, customerN
             amount={orderData.total}
             publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
             customerName={customerName || 'Customer'}
+            orderId={orderData.id}
             onSuccess={onSuccess}
             onCancel={onCancel}
           />

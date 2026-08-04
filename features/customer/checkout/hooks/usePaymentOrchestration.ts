@@ -408,35 +408,95 @@ export function usePaymentOrchestration({
           orderTotals.total :
           convertFromNGN(orderTotals.total, userCurrency);
 
-        const orderInfo = {
-          ...orderTotals,
-          items: items.map(item => ({
-            product_id: item.productId,
-            name: item.productName,
-            price: item.price,
-            quantity: item.quantity,
-            size: item.size,
-            color: item.color,
-            note: item.note ?? null,
-            logo_url: item.logoUrl ?? null,
-          })),
-          delivery_address: fullDeliveryAddress,
-          delivery_state: deliveryState.trim(),
-          delivery_country: deliveryCountry.trim(),
-          contact_phone: contactPhone.trim(),
-          payment_method: paymentMethod,
-          currency: paymentCurrency,
-          original_amount: paymentAmount,
-          appliedPromo,
-          discountAmount: discountNGN,
-          notes: orderNote.trim() || null,
-          description: orderNote.trim() || null,
-        };
-
-        setOrderData(orderInfo);
+        const orderItems = items.map(item => ({
+          product_id: item.productId,
+          name: item.productName,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          note: item.note ?? null,
+          logo_url: item.logoUrl ?? null,
+        }));
 
         if (paymentMethod === 'card' && userCurrency === 'NGN') {
+          // Create the order BEFORE opening Paystack, as pending_payment -
+          // exactly like handlePayForMe does. Without this, the order used
+          // to be created only after Paystack reported success client-side,
+          // so a dropped connection at that point meant the customer was
+          // charged with no order and nothing on our side to reconcile
+          // against. Now there's always a row for the webhook/reconciliation
+          // job to settle even if this browser/app never calls back.
+          const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
+            order_items: orderItems
+          });
+          if (stockValidationError) {
+            showCheckoutNotice('Error', `Some items are no longer available: ${stockValidationError.message}`);
+            setLoading(false);
+            return;
+          }
+
+          const { data: orderRecord, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              user_id: user.id,
+              items: orderItems,
+              subtotal: orderTotals.subtotal,
+              service_fee: orderTotals.serviceFee,
+              delivery_fee: orderTotals.deliveryFee,
+              tax: orderTotals.tax,
+              total: orderTotals.total,
+              payment_method: 'paystack',
+              payment_status: 'pending_payment',
+              order_status: 'pending_payment',
+              delivery_address: fullDeliveryAddress,
+              delivery_state: deliveryState.trim(),
+              delivery_country: deliveryCountry.trim(),
+              contact_phone: contactPhone.trim(),
+              currency: 'NGN',
+              original_amount: paymentAmount,
+              promo_code: appliedPromo?.code || null,
+              promo_code_id: appliedPromo?.promoId || null,
+              discount_amount: discountNGN,
+              notes: orderNote.trim() || null,
+              description: orderNote.trim() || null,
+            })
+            .select()
+            .single();
+
+          if (orderError) {
+            showCheckoutNotice('Error', 'Could not start checkout. Please try again.');
+            setLoading(false);
+            return;
+          }
+
+          setOrderData({
+            ...orderTotals,
+            id: orderRecord.id,
+            appliedPromo,
+            discountAmount: discountNGN,
+            original_amount: paymentAmount,
+            currency: paymentCurrency,
+          });
           setShowPaystack(true);
+        } else {
+          // Non-NGN "card" checkout has no payment provider wired up yet -
+          // preserved as-is (pre-existing behavior), just staging the data.
+          setOrderData({
+            ...orderTotals,
+            items: orderItems,
+            delivery_address: fullDeliveryAddress,
+            delivery_state: deliveryState.trim(),
+            delivery_country: deliveryCountry.trim(),
+            contact_phone: contactPhone.trim(),
+            payment_method: paymentMethod,
+            currency: paymentCurrency,
+            original_amount: paymentAmount,
+            appliedPromo,
+            discountAmount: discountNGN,
+            notes: orderNote.trim() || null,
+            description: orderNote.trim() || null,
+          });
         }
       }
     } catch (error) {
@@ -449,80 +509,41 @@ export function usePaymentOrchestration({
 
   const completeOnlinePayment = async (reference: string, provider: string) => {
     try {
-      if (!orderData) throw new Error('Order data not found');
+      if (!orderData?.id) throw new Error('Order data not found');
 
-      // First validate stock availability using the database function
-      const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
-        order_items: orderData.items
+      // Verify + settle server-side (needs the Paystack secret key, which
+      // never touches the client) via the same confirmCheckoutOrder logic
+      // paystack-webhook and reconcile-pending-payments use - so this order
+      // gets settled exactly once no matter which path notices first.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const jwt = sessionData.session?.access_token;
+      if (!jwt) throw new Error('Not signed in');
+
+      const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/confirm-order-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ orderId: orderData.id, reference }),
       });
-
-      if (stockValidationError) {
-        throw new Error(`Stock validation failed: ${stockValidationError.message}`);
+      const result = await response.json().catch(() => ({} as any));
+      if (!result?.success) {
+        throw new Error(result?.error || 'Payment could not be confirmed');
       }
 
-      // Create order record - stock will be automatically reduced by database trigger
-      const { data: orderRecord, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user!.id,
-          items: orderData.items,
-          subtotal: orderData.subtotal,
-          service_fee: orderData.serviceFee,
-          delivery_fee: orderData.deliveryFee,
-          tax: orderData.tax,
-          total: orderData.total,
-          payment_method: provider,
-          payment_status: 'paid',
-          order_status: 'pending',
-          delivery_address: orderData.delivery_address,
-          delivery_state: orderData.delivery_state,
-          delivery_country: orderData.delivery_country,
-          contact_phone: orderData.contact_phone || '',
-          currency: orderData.currency,
-          original_amount: orderData.original_amount,
-          promo_code: orderData.appliedPromo?.code || null,
-          promo_code_id: orderData.appliedPromo?.promoId || null,
-          discount_amount: orderData.discountAmount || 0,
-          notes: orderNote.trim() || null,
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      console.log('Online payment order created successfully:', orderRecord.id);
+      console.log('Online payment confirmed:', orderData.id);
       await logEvent('purchase', {
-        transaction_id: orderRecord.id,
+        transaction_id: orderData.id,
         currency: orderData.currency,
         value: orderData.total,
       });
 
       posthog.capture('order_placed', {
-        order_id: orderRecord.id,
+        order_id: orderData.id,
         payment_method: provider,
         currency: orderData.currency,
         total: orderData.total,
         items_count: getTotalItems(),
         promo_code: orderData.appliedPromo?.code ?? null,
       });
-      console.log('Promo used with ID:', orderData.appliedPromo?.promoId); // Debug log
-
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user!.id,
-          type: 'debit',
-          amount: orderData.total,
-          currency: orderData.currency,
-          original_amount: orderData.original_amount,
-          description: `Order payment - ${getTotalItems()} items${orderData.appliedPromo ? ` (${orderData.appliedPromo.code} applied)` : ''}`,
-          reference: reference,
-          status: 'completed',
-          payment_provider: provider
-        });
-
-      if (transactionError) throw transactionError;
 
       await refreshPoints().catch(() => {});
 
@@ -546,8 +567,12 @@ export function usePaymentOrchestration({
         context: 'completeOnlinePayment',
         provider,
       });
-      // Critical: payment succeeded but the order failed. Must be visible on web.
-      showCheckoutNotice('Error', 'Payment was successful but failed to create order. Please contact support.');
+      // Unlike before, a failure here does NOT mean the payment is lost: the
+      // order was already created as pending_payment before Paystack opened,
+      // and paystack-webhook / reconcile-pending-payments will settle it
+      // independently of this client call within minutes if Paystack
+      // actually captured the charge.
+      showCheckoutNotice('Confirming your payment', 'We\'re verifying your payment now. If it doesn\'t appear in your Orders within a few minutes, please contact support.');
     }
   };
 

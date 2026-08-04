@@ -1,0 +1,12 @@
+-- Card checkout used to charge the customer via Paystack BEFORE the order
+-- row even existed (order was only inserted client-side after Paystack
+-- reported success). If the client dropped, crashed, or failed stock
+-- validation at that point, the customer was charged with no order and no
+-- record on our side - and no automated way to notice or fix it.
+--
+-- This mirrors the fix already shipped for pay-for-me links: the order now
+-- gets created up front as payment_status='pending_payment' before Paystack
+-- is ever opened, and a webhook + reconciliation job (same pattern as
+-- paystack-webhook / reconcile-pending-payments) settle it independently of
+-- whether the customer's browser/app ever calls back.
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS paystack_reference text UNIQUE;

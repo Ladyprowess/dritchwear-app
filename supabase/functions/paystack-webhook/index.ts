@@ -1,19 +1,25 @@
-// Paystack server-to-server webhook for pay-for-me payment links.
+// Paystack server-to-server webhook, covering both pay-for-me payment links
+// AND regular card checkout.
 // Register in Paystack Dashboard → Settings → API Keys & Webhooks:
 //   https://<project>.supabase.co/functions/v1/paystack-webhook
 //
-// This exists because the `pay` function's confirmation call is normally
-// fired by the payer's own browser right after Paystack's popup closes -
-// if that tab/app is closed or loses network first, Paystack has the money
-// but our order never finds out. This webhook is a second, independent
-// path to the same result, driven by Paystack itself instead of the payer's
-// device, so a dropped client connection can no longer leave an order stuck
-// showing "payment pending" after the customer has actually paid.
+// This exists because the client-invoked confirmation call (the `pay`
+// function for pay-links, `confirm-order-payment` for regular checkout) is
+// normally fired by the payer's own browser/app right after Paystack's
+// popup closes - if that tab/app is closed or loses network first, Paystack
+// has the money but our order never finds out. This webhook is a second,
+// independent path to the same result, driven by Paystack itself instead of
+// the payer's device.
+//
+// The metadata `token` custom field is shared by both flows: it's either a
+// payment_links.token (pay-for-me) or a raw orders.id (regular checkout) -
+// tried in that order below.
 //
 // Deploy: supabase functions deploy paystack-webhook --no-verify-jwt
 
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
 import { confirmPaymentLink, tokenFromMetadata } from '../_shared/confirmPaymentLink.ts';
+import { confirmCheckoutOrder } from '../_shared/confirmCheckoutOrder.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -79,19 +85,28 @@ Deno.serve(async (req: Request) => {
   const token = tokenFromMetadata(event?.data?.metadata);
 
   if (!reference || !token) {
-    // Not a pay-link charge (e.g. wallet funding/checkout via a different
-    // Paystack integration) - nothing for this webhook to reconcile.
+    // Not a pay-link or regular-checkout charge (e.g. wallet funding via a
+    // different Paystack integration) - nothing for this webhook to reconcile.
     return json({ received: true, handled: false });
   }
 
-  const result = await confirmPaymentLink(supabase, {
+  let result = await confirmPaymentLink(supabase, {
     token,
     reference,
     paystackSecretKey: PAYSTACK_SECRET_KEY,
   });
 
+  if (!result.success && result.status === 404) {
+    // Not a payment_links token - try it as a direct orders.id (regular checkout).
+    result = await confirmCheckoutOrder(supabase, {
+      orderId: token,
+      reference,
+      paystackSecretKey: PAYSTACK_SECRET_KEY,
+    });
+  }
+
   if (!result.success) {
-    console.error('paystack-webhook: confirmPaymentLink failed', { token, reference, error: result.error });
+    console.error('paystack-webhook: confirmation failed', { token, reference, error: result.error });
   }
 
   return json({ received: true, handled: result.success, alreadyPaid: result.alreadyPaid ?? false });

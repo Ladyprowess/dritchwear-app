@@ -8,14 +8,19 @@ interface PaystackPaymentProps {
   onSuccess: (response: any) => void;
   onCancel: () => void;
   customerName?: string;
+  // The pre-created order this payment settles. Embedded in Paystack's
+  // metadata (same custom_fields shape the pay-for-me link page uses) so the
+  // webhook/reconciliation job can identify which order to mark paid,
+  // independent of whether onSuccess ever fires client-side.
+  orderId?: string;
 }
 
 // ---------------------------------------------------------------------------
 // Shared HTML - rendered inside WebView (native) or iframe (web)
 // ---------------------------------------------------------------------------
-function buildHtml(publicKey: string, email: string, amount: number, customerName: string) {
+function buildHtml(publicKey: string, email: string, amount: number, customerName: string, orderId: string) {
   const amountInKobo = Math.round(amount * 100);
-  const cfg = JSON.stringify({ key: publicKey, email, amount: amountInKobo, currency: 'NGN', customerName });
+  const cfg = JSON.stringify({ key: publicKey, email, amount: amountInKobo, currency: 'NGN', customerName, orderId });
 
   return `<!DOCTYPE html>
 <html>
@@ -90,7 +95,10 @@ function startPayment() {
     var handler = PaystackPop.setup({
       key: CFG.key, email: CFG.email, amount: CFG.amount, currency: CFG.currency,
       ref: 'dw_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
-      metadata: { custom_fields: [{ display_name: 'Customer', variable_name: 'customer_name', value: CFG.customerName }] },
+      metadata: { custom_fields: [
+        { display_name: 'Customer', variable_name: 'customer_name', value: CFG.customerName },
+        { display_name: 'Order Token', variable_name: 'token', value: CFG.orderId || '' },
+      ] },
       callback: onPaySuccess,
       onClose: onPayClose
     });
@@ -112,9 +120,9 @@ window.addEventListener('load', function() {
 // ---------------------------------------------------------------------------
 // Web renderer - uses a plain <iframe> via srcdoc (Safari compatible)
 // ---------------------------------------------------------------------------
-function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerName }: PaystackPaymentProps) {
+function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerName, orderId }: PaystackPaymentProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const html = buildHtml(publicKey, email, amount, customerName ?? 'Customer');
+  const html = buildHtml(publicKey, email, amount, customerName ?? 'Customer', orderId ?? '');
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -152,10 +160,10 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
 // ---------------------------------------------------------------------------
 // Native renderer - uses react-native-webview
 // ---------------------------------------------------------------------------
-function PaystackNative({ email, amount, publicKey, onSuccess, onCancel, customerName }: PaystackPaymentProps) {
+function PaystackNative({ email, amount, publicKey, onSuccess, onCancel, customerName, orderId }: PaystackPaymentProps) {
   // Lazy require so the native module is never touched on web
   const { WebView } = require('react-native-webview');
-  const html = buildHtml(publicKey, email, amount, customerName ?? 'Customer');
+  const html = buildHtml(publicKey, email, amount, customerName ?? 'Customer', orderId ?? '');
 
   const handleMessage = (event: any) => {
     try {
