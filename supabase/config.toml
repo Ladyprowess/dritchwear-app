@@ -44,7 +44,11 @@ additional_redirect_urls = [
   "https://dist-two-sand-84.vercel.app",
   "https://app.dritchwear.com/auth/reset-password",
   "https://app.dritchwear.com/auth/confirm-email",
-  "https://app.dritchwear.com"
+  "https://app.dritchwear.com",
+  "https://app.dritchwear.com/reset-password",
+  "https://app.dritchwear.com/confirm-email",
+  "https://dritchwear.com/reset-password",
+  "https://dritchwear.com/confirm-email"
 ]
 
 [auth.rate_limit]
@@ -62,3 +66,7 @@ otp_length = 8
 [auth.email.template.confirmation]
 subject = "Confirm your Dritchwear account"
 content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Dritchwear password"
+content_path = "./supabase/templates/recovery.html"

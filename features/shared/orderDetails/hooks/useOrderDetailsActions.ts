@@ -55,7 +55,7 @@ export function useOrderDetailsActions(
         return;
       }
 
-      Alert.alert('Saved', `Logo saved to: ${downloaded.uri}`);
+      Alert.alert('Saved', 'Logo saved to your device.');
     } catch (error) {
       console.error('Download failed:', error);
       Alert.alert('Download failed', 'Could not download the logo. Please try again.');

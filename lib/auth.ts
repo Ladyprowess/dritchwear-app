@@ -149,7 +149,7 @@ export async function resetPassword(email: string) {
     console.log('🔄 Requesting password reset for:', email);
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       // Use app.dritchwear.com domain for password reset
-      redirectTo: `https://app.dritchwear.com/auth/reset-password`,
+      redirectTo: `https://app.dritchwear.com/reset-password`,
     });
     
     if (error) throw error;
@@ -173,22 +173,6 @@ export async function updatePassword(newPassword: string) {
     return { error: null };
   } catch (error) {
     console.error('❌ Password update error:', error);
-    return { error: error as AuthError };
-  }
-}
-
-export async function confirmPasswordReset(newPassword: string) {
-  try {
-    console.log('🔐 Confirming password reset');
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-    
-    if (error) throw error;
-    console.log('✅ Password reset confirmed');
-    return { error: null };
-  } catch (error) {
-    console.error('❌ Password reset confirmation error:', error);
     return { error: error as AuthError };
   }
 }
