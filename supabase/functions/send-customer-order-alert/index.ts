@@ -6,7 +6,21 @@ const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABA
 const WEB_PUSH_VAPID_PRIVATE_KEY = Deno.env.get("WEB_PUSH_VAPID_PRIVATE_KEY") || "";
 const WEB_PUSH_VAPID_PUBLIC_KEY = Deno.env.get("WEB_PUSH_VAPID_PUBLIC_KEY") || "";
 const WEB_PUSH_VAPID_SUBJECT = Deno.env.get("WEB_PUSH_VAPID_SUBJECT") || "mailto:support@dritchwear.com";
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") || "";
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const EMAILABLE_ENTITY_TYPES = new Set(["order", "custom_order"]);
+
+async function sendOrderStatusEmail(email: string, fullName: string | null, title: string, message: string, url: string | null) {
+  const name = String(fullName || "there").replace(/[<>&"]/g, "");
+  const link = `https://app.dritchwear.com${url || "/orders"}`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f1f6;font-family:Arial,sans-serif;color:#17131c"><table width="100%" role="presentation"><tr><td align="center" style="padding:28px 12px"><table width="600" role="presentation" style="width:100%;max-width:600px;background:#fff;border-collapse:collapse"><tr><td style="padding:24px 28px;background:#5a2d82;color:#fff;font-size:21px;font-weight:700">DRITCHWEAR</td></tr><tr><td style="padding:32px 28px;text-align:left"><div style="font-size:12px;font-weight:700;letter-spacing:1.2px;color:#5a2d82">ORDER UPDATE</div><h1 style="font-size:23px;line-height:1.3;margin:9px 0 10px">Hi ${name}, ${title.toLowerCase()}</h1><p style="font-size:15px;line-height:1.7;color:#665f6c">${message}</p><a href="${link}" style="display:inline-block;margin-top:10px;padding:13px 22px;background:#5a2d82;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">VIEW YOUR ORDER</a></td></tr><tr><td style="padding:22px 28px;background:#f8f7f9;text-align:left;font-size:12px;line-height:1.7;color:#746d79">support@dritchwear.com</td></tr></table></td></tr></table></body></html>`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: "Dritchwear <noreply@dritchwear.com>", reply_to: "support@dritchwear.com", to: [email], subject: title, html }),
+  });
+  if (!response.ok) throw new Error(`Resend responded ${response.status}: ${await response.text()}`);
+}
 
 if (WEB_PUSH_VAPID_PRIVATE_KEY && WEB_PUSH_VAPID_PUBLIC_KEY) {
   webpush.setVapidDetails(WEB_PUSH_VAPID_SUBJECT, WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY);
@@ -82,5 +96,19 @@ Deno.serve(async (req: Request) => {
   }
 
   await db.from("customer_order_alerts").update({ push_sent_count: pushCount }).eq("id", alert.id);
-  return json({ success: true, pushCount });
+
+  let emailed = false;
+  if (alert.should_email && RESEND_API_KEY && EMAILABLE_ENTITY_TYPES.has(alert.entity_type)) {
+    try {
+      const { data: profile } = await db.from("profiles").select("email,full_name").eq("id", alert.user_id).single();
+      if (profile?.email) {
+        await sendOrderStatusEmail(profile.email, profile.full_name, alert.title, alert.message, alert.url);
+        emailed = true;
+      }
+    } catch (emailError) {
+      console.error("Failed to send order status email:", emailError);
+    }
+  }
+
+  return json({ success: true, pushCount, emailed });
 });

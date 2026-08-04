@@ -6,12 +6,12 @@
 // Redirect dritchwear.com/pay/* → above URL in your DNS / reverse-proxy.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
+import { confirmPaymentLink } from '../_shared/confirmPaymentLink.ts';
 
 const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const PAYSTACK_KEY  = Deno.env.get('PAYSTACK_PUBLIC_KEY') ?? '';
 const PAYSTACK_SECRET_KEY = Deno.env.get('PAYSTACK_SECRET_KEY') ?? '';
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -46,24 +46,6 @@ async function readJsonBody(req: Request) {
   } catch {
     throw new Error('Invalid JSON body');
   }
-}
-
-function safeParse(value: unknown): any {
-  if (value && typeof value === 'object') return value;
-  if (typeof value !== 'string') return null;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-// The token we embedded in Paystack metadata at checkout, if present.
-function tokenFromVerification(verification: any): string {
-  const meta = safeParse(verification?.data?.metadata);
-  const fields = Array.isArray(meta?.custom_fields) ? meta.custom_fields : [];
-  const field = fields.find((f: any) => f?.variable_name === 'token');
-  return field?.value ? String(field.value).trim() : '';
 }
 
 function html(body: string, title = 'Pay - Dritchwear') {
@@ -146,125 +128,13 @@ Deno.serve(async (req: Request) => {
       const payerEmail = String(body.payerEmail ?? '').trim();
       const reference = String(body.reference ?? '').trim();
 
-      if (!token || !reference) {
-        return json({ success: false, error: 'Missing payment token or transaction reference' }, 400);
-      }
-      if (!PAYSTACK_SECRET_KEY) return json({ success: false, error: 'Payment verification is not configured' }, 503);
-
-      const { data: plink, error: linkLookupError } = await supabase
-        .from('payment_links')
-        .select('order_id, user_id, status, amount_ngn, expires_at')
-        .eq('token', token)
-        .single();
-
-      if (linkLookupError || !plink) {
-        return json({ success: false, error: 'Payment link not found' }, 404);
-      }
-
-      if (plink.status === 'paid') {
-        return json({ success: true, alreadyPaid: true });
-      }
-
-      if (plink.status !== 'pending') {
-        return json({ success: false, error: `Payment link is ${plink.status}` }, 409);
-      }
-      if (plink.expires_at && new Date(plink.expires_at) < new Date()) {
-        return json({ success: false, error: 'Payment link has expired' }, 410);
-      }
-
-      // Reject a reference that was already consumed by another payment link.
-      // Prevents replaying a genuine payment against a different pending link of the same amount.
-      const { data: existingRef } = await supabase
-        .from('payment_links')
-        .select('token')
-        .eq('paystack_ref', reference)
-        .maybeSingle();
-      if (existingRef && existingRef.token !== token) {
-        return json({ success: false, error: 'This payment reference has already been used' }, 409);
-      }
-
-      const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-        headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+      const result = await confirmPaymentLink(supabase, {
+        token,
+        reference,
+        payerEmail,
+        paystackSecretKey: PAYSTACK_SECRET_KEY,
       });
-      const verification = await verifyResponse.json().catch(() => null) as any;
-      if (!verifyResponse.ok || !verification?.status || verification?.data?.status !== 'success') {
-        return json({ success: false, error: 'Paystack could not verify this payment' }, 402);
-      }
-      const expectedKobo = Math.round(Number(plink.amount_ngn || 0) * 100);
-      if (verification.data.currency !== 'NGN' || Number(verification.data.amount) !== expectedKobo) {
-        return json({ success: false, error: 'Verified payment amount does not match this order' }, 409);
-      }
-      if (verification.data.reference !== reference) {
-        return json({ success: false, error: 'Payment reference mismatch' }, 409);
-      }
-      // If checkout embedded the link token in metadata, it must match this link.
-      const metaToken = tokenFromVerification(verification);
-      if (metaToken && metaToken !== token) {
-        return json({ success: false, error: 'This payment does not belong to this order' }, 409);
-      }
-
-      // 1. Mark payment link as paid (only if still pending, so concurrent
-      //    confirmations don't double-notify or double-process the order).
-      const { data: updatedLinks, error: updateLinkError } = await supabase.from('payment_links').update({
-        status: 'paid',
-        payer_email: verification.data.customer?.email || payerEmail || null,
-        paystack_ref: reference || null,
-        paid_at: new Date().toISOString(),
-      }).eq('token', token).eq('status', 'pending').select('token');
-
-      if (updateLinkError) {
-        throw new Error(`Failed to update payment link: ${updateLinkError.message}`);
-      }
-
-      if (!updatedLinks || updatedLinks.length === 0) {
-        // A concurrent request already marked this link paid.
-        return json({ success: true, alreadyPaid: true });
-      }
-
-      if (plink?.order_id) {
-        // 3. Update order status
-        const { error: orderUpdateError } = await supabase.from('orders').update({
-          payment_status: 'paid',
-          order_status: 'in_review',
-        }).eq('id', plink.order_id);
-
-        if (orderUpdateError) {
-          throw new Error(`Failed to update order: ${orderUpdateError.message}`);
-        }
-
-        if (plink.user_id) {
-          // In-app notification + push are handled by the orders UPDATE
-          // trigger (customer_order_alerts, see 202608020004 migration)
-          // now that order_status/payment_status were updated above.
-
-          // Email the customer a payment confirmation (best-effort).
-          try {
-            if (RESEND_API_KEY) {
-              const { data: buyer } = await supabase.from('profiles').select('email,full_name').eq('id', plink.user_id).single();
-              if (buyer?.email) {
-                const buyerName = String(buyer.full_name || 'there').replace(/[<>&"]/g, '');
-                const html = `<!doctype html><html><body style="margin:0;background:#f4f1f6;font-family:Arial,sans-serif;color:#17131c"><table width="100%" role="presentation"><tr><td align="center" style="padding:28px 12px"><table width="600" role="presentation" style="width:100%;max-width:600px;background:#fff;border-collapse:collapse"><tr><td style="padding:24px 28px;background:#5a2d82;color:#fff;font-size:21px;font-weight:700">DRITCHWEAR</td></tr><tr><td style="padding:32px 28px;text-align:left"><div style="font-size:12px;font-weight:700;letter-spacing:1.2px;color:#16794b">PAYMENT RECEIVED</div><h1 style="font-size:23px;line-height:1.3;margin:9px 0 10px">Thank you, ${buyerName}!</h1><p style="font-size:15px;line-height:1.7;color:#665f6c">We've received your payment and your order is now in review. We'll let you know as it progresses.</p><a href="https://app.dritchwear.com/orders" style="display:inline-block;margin-top:10px;padding:13px 22px;background:#5a2d82;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">VIEW YOUR ORDER</a></td></tr><tr><td style="padding:22px 28px;background:#f8f7f9;text-align:left;font-size:12px;line-height:1.7;color:#746d79">support@dritchwear.com</td></tr></table></td></tr></table></body></html>`;
-                const emailResponse = await fetch('https://api.resend.com/emails', {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${RESEND_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'Idempotency-Key': `payment-received/${plink.token}`,
-                  },
-                  body: JSON.stringify({ from: 'Dritchwear <noreply@dritchwear.com>', reply_to: 'support@dritchwear.com', to: [buyer.email], subject: 'Payment received - your Dritchwear order is in review', html }),
-                });
-                if (!emailResponse.ok) {
-                  console.error('Failed to send payment confirmation email:', emailResponse.status, await emailResponse.text());
-                }
-              }
-            }
-          } catch (emailError) {
-            console.error('Failed to send payment confirmation email:', emailError);
-          }
-        }
-      }
-
-      return json({ success: true });
+      return json(result, result.status);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Payment confirmation failed:', message);

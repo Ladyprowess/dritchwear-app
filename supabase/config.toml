@@ -19,6 +19,12 @@ verify_jwt = true
 [functions.resend-webhook]
 verify_jwt = false
 
+[functions.paystack-webhook]
+verify_jwt = false
+
+[functions.reconcile-pending-payments]
+verify_jwt = false
+
 [functions.process-scheduled-communications]
 verify_jwt = false
 

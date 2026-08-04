@@ -39,7 +39,7 @@
     },
     "android": {
       "package": "com.dritchwear.app",
-      "versionCode": 155,
+      "versionCode": 158,
       "intentFilters": [
         {
           "action": "VIEW",
