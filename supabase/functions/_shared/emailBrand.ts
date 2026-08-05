@@ -37,6 +37,44 @@ export interface EmailFact {
   highlight?: boolean;
 }
 
+// Horizontal step tracker (e.g. Order Placed -> Processing -> Shipped ->
+// Delivered), table-based so it renders consistently across email clients
+// that don't support flexbox/grid. currentIndex is the last completed step.
+export function progressTracker(steps: string[], currentIndex: number): string {
+  const n = steps.length;
+  const circleRow = steps.map((_, i) => {
+    const done = i <= currentIndex;
+    const circle = `<td width="26" style="width:26px"><div style="width:22px;height:22px;border-radius:11px;background:${done ? BRAND : "#FFFFFF"};border:2px solid ${done ? BRAND : "#D8D2DC"};text-align:center;line-height:18px;font-size:11px;font-weight:700;color:${done ? "#FFFFFF" : "#B7B0BF"}">${done ? "&#10003;" : i + 1}</div></td>`;
+    if (i === n - 1) return circle;
+    const lineDone = i < currentIndex;
+    return `${circle}<td style="height:2px;background:${lineDone ? BRAND : "#E4DEEA"};font-size:0;line-height:0">&nbsp;</td>`;
+  }).join("");
+
+  const labelRow = steps.map((label, i) => {
+    const done = i <= currentIndex;
+    const colspan = i === n - 1 ? 1 : 2;
+    return `<td align="center" colspan="${colspan}" style="font-size:10px;font-weight:${done ? "700" : "500"};color:${done ? BRAND : TEXT_FAINT};padding-top:6px">${esc(label)}</td>`;
+  }).join("");
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 22px 0"><tr>${circleRow}</tr><tr>${labelRow}</tr></table>`;
+}
+
+// Bold highlighted card for a shipment's tracking number - the visual
+// equivalent of a carrier's own tracking widget, styled in-brand.
+export function trackingCard(trackingNumber: string, trackingUrl?: string): string {
+  const trackLink = trackingUrl
+    ? `<a href="${esc(trackingUrl)}" style="color:#FFFFFF;text-decoration:underline;font-size:12px;font-weight:700;white-space:nowrap">Track package &rsaquo;</a>`
+    : "";
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px 0"><tr><td bgcolor="${BRAND}" style="border-radius:14px;padding:18px 20px">
+    <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+      <td style="font-size:11px;font-weight:700;letter-spacing:0.6px;color:#E7DEF2;text-transform:uppercase">Tracking Number</td>
+      <td align="right">${trackLink}</td>
+    </tr></table>
+    <div style="margin-top:8px;font-size:19px;font-weight:800;color:#FFFFFF;letter-spacing:0.8px">${esc(trackingNumber)}</div>
+    <div style="margin-top:6px;font-size:12px;color:#E7DEF2">Your package is on the way.</div>
+  </td></tr></table>`;
+}
+
 // A titled box with optional item list (as raw HTML, since item shape
 // differs by caller) and a label/value fact table - the "Order Summary" card.
 export function summaryCard(cardTitle: string, itemsHtml: string, facts: EmailFact[]): string {
@@ -58,9 +96,24 @@ export interface EmailShellOptions {
 }
 
 export function emailShell(opts: EmailShellOptions): string {
-  const secondaryButton = opts.ctaSecondaryLabel && opts.ctaSecondaryUrl
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-top:10px"><tr><td align="center" style="border:1px solid #D8D2DC;border-radius:11px"><a href="${opts.ctaSecondaryUrl}" style="display:block;padding:14px 40px;color:${BRAND};text-decoration:none;font-size:14px;font-weight:700;border-radius:11px;text-align:center">${opts.ctaSecondaryLabel}</a></td></tr></table>`
-    : "";
+  // Two side-by-side pill buttons (equal weight) when there's a secondary
+  // action, instead of stacking two full-width buttons - matches the
+  // "Have questions or need help?" dual-button pattern.
+  const ctaRow = opts.ctaSecondaryLabel && opts.ctaSecondaryUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+        <td width="49%" align="center" bgcolor="${BRAND}" style="border-radius:11px">
+          <a href="${opts.ctaPrimaryUrl}" style="display:block;padding:14px 8px;color:#FFFFFF;text-decoration:none;font-size:13px;font-weight:700;border-radius:11px;text-align:center">${opts.ctaPrimaryLabel}</a>
+        </td>
+        <td width="2%"></td>
+        <td width="49%" align="center" style="border:1px solid #D8D2DC;border-radius:11px">
+          <a href="${opts.ctaSecondaryUrl}" style="display:block;padding:14px 8px;color:${BRAND};text-decoration:none;font-size:13px;font-weight:700;border-radius:11px;text-align:center">${opts.ctaSecondaryLabel}</a>
+        </td>
+      </tr></table>`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
+        <td align="center" bgcolor="${BRAND}" style="border-radius:11px">
+          <a href="${opts.ctaPrimaryUrl}" style="display:block;padding:15px 40px;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;border-radius:11px;text-align:center">${opts.ctaPrimaryLabel}</a>
+        </td>
+      </tr></table>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -101,13 +154,9 @@ export function emailShell(opts: EmailShellOptions): string {
           ${opts.bodyHtml}
         </td></tr>
 
-        <tr><td class="pad" style="padding:4px 40px 0">
-          <table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr>
-            <td align="center" bgcolor="${BRAND}" style="border-radius:11px">
-              <a href="${opts.ctaPrimaryUrl}" style="display:block;padding:15px 40px;color:#FFFFFF;text-decoration:none;font-size:14px;font-weight:700;border-radius:11px;text-align:center">${opts.ctaPrimaryLabel}</a>
-            </td>
-          </tr></table>
-          ${secondaryButton}
+        <tr><td class="pad" style="padding:4px 40px 0;text-align:center">
+          ${opts.ctaSecondaryLabel && opts.ctaSecondaryUrl ? `<div style="font-size:13px;font-weight:700;color:${TEXT_DARK};margin-bottom:12px">Have questions or need help?</div>` : ""}
+          ${ctaRow}
         </td></tr>
 
         <tr><td class="pad" style="padding:30px 40px 30px;background:${FOOTER_BG};border-top:1px solid ${FOOTER_BORDER};margin-top:24px">

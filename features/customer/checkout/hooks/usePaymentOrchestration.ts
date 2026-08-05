@@ -118,6 +118,7 @@ export function usePaymentOrchestration({
 
       const orderItems = items.map(item => ({
         product_id: item.productId,
+        image: item.productImage ?? null,
         name: item.productName,
         price: item.price,
         quantity: item.quantity,
@@ -207,6 +208,7 @@ export function usePaymentOrchestration({
       // Prepare order items for database
       const orderItems = items.map(item => ({
         product_id: item.productId,
+        image: item.productImage ?? null,
         name: item.productName,
         price: item.price,
         quantity: item.quantity,
@@ -416,6 +418,7 @@ export function usePaymentOrchestration({
 
         const orderItems = items.map(item => ({
           product_id: item.productId,
+          image: item.productImage ?? null,
           name: item.productName,
           price: item.price,
           quantity: item.quantity,

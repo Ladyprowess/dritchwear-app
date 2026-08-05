@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.43.4";
 import webpush from "npm:web-push@3.6.7";
-import { esc, p, infoBox, summaryCard, emailShell, type EmailFact } from "../_shared/emailBrand.ts";
+import { esc, p, infoBox, summaryCard, emailShell, progressTracker, trackingCard, BOX_BORDER, type EmailFact } from "../_shared/emailBrand.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 const WEB_PUSH_VAPID_PRIVATE_KEY = Deno.env.get("WEB_PUSH_VAPID_PRIVATE_KEY") || "";
@@ -20,6 +20,21 @@ function firstNameOf(fullName: string | null): string {
 
 function naira(amount: number): string {
   return `₦${Math.round(amount || 0).toLocaleString("en-US")}`;
+}
+
+// Mirrors lib/imageUrl.ts's optimizeImageUrl (web/app side) - product photos
+// are large PNGs, and email clients cache/load images without the app's own
+// resizing, so route them through the same wsrv.nl CDN for a small WebP
+// thumbnail instead of embedding a multi-MB original in every email.
+function optimizeEmailImage(src: string | null | undefined, width: number): string | null {
+  if (!src || typeof src !== "string") return null;
+  if (src.startsWith("data:") || src.includes("wsrv.nl") || src.includes("weserv.nl")) return src;
+  if (!/^https?:\/\//i.test(src)) return null;
+  const githubMatch = src.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/(?:blob|raw)\/(.+?)(?:\?.*)?$/i);
+  const normalized = githubMatch ? `https://raw.githubusercontent.com/${githubMatch[1]}/${githubMatch[2]}/${githubMatch[3]}` : src;
+  const source = normalized.replace(/^https?:\/\//i, "");
+  const params = new URLSearchParams({ url: source, w: String(width), q: "70", output: "webp", we: "" });
+  return `https://wsrv.nl/?${params.toString()}`;
 }
 
 function orderNumber(orderId: string): string {
@@ -69,12 +84,22 @@ interface OrderItemSummary {
   size?: string;
   color?: string;
   quantity?: number;
+  image?: string;
 }
 
 function orderCard(cardTitle: string, items: OrderItemSummary[], facts: EmailFact[]): string {
   const itemsHtml = (items || []).map((item, index) => {
     const meta = [item.size ? `Size: ${esc(item.size)}` : "", item.color ? `Colour: ${esc(item.color)}` : ""].filter(Boolean).join(" &nbsp;&bull;&nbsp; ");
-    return `<div style="font-size:14px;font-weight:700;color:#17131C;margin:${index === 0 ? "0" : "14px"} 0 4px 0">${esc(item.name || "Item")}</div>${meta ? `<div style="font-size:12px;color:#8A838F;margin:0 0 4px 0">${meta}</div>` : ""}<div style="font-size:12px;color:#8A838F">Qty: ${item.quantity ?? 1}</div>`;
+    const textCell = `<div style="font-size:14px;font-weight:700;color:#17131C;margin:0 0 4px 0">${esc(item.name || "Item")}</div>${meta ? `<div style="font-size:12px;color:#8A838F;margin:0 0 4px 0">${meta}</div>` : ""}<div style="font-size:12px;color:#8A838F">Qty: ${item.quantity ?? 1}</div>`;
+    const topMargin = index === 0 ? "0" : "14px";
+    const thumb = optimizeEmailImage(item.image, 96);
+    if (!thumb) {
+      return `<div style="margin:${topMargin} 0 0 0">${textCell}</div>`;
+    }
+    return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:${topMargin} 0 0 0"><tr>
+      <td width="52" style="width:52px;vertical-align:top"><img src="${esc(thumb)}" width="48" height="48" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover;display:block;border:1px solid ${BOX_BORDER}"></td>
+      <td style="vertical-align:top;padding-left:12px">${textCell}</td>
+    </tr></table>`;
   }).join("");
   return summaryCard(cardTitle, itemsHtml, facts);
 }
@@ -104,6 +129,7 @@ function buildOrderEmailContent(
   const viewOrder = { label: "View Your Order", url: fallbackUrl };
   const shopAgain = { label: "Shop Again at Dritchwear.com", url: `${SITE_URL}/shop` };
   const whatsapp = { label: "Message Us on WhatsApp", url: WHATSAPP_URL };
+  const ORDER_STEPS = ["Order Placed", "Processing", "Shipped", "Delivered"];
   const customizationNote = order?.customization_fee && order.customization_fee > 0
     ? p(`<strong style="color:#17131C">Customization</strong><br/>Your order includes a custom design. The customization fee (${naira(order.customization_fee)}) has been included in your total.`, 18)
     : "";
@@ -116,6 +142,7 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Payment Received",
           headline: `Thank you, ${firstName}!`,
           bodyHtml: p("We've received your payment for your Dritchwear order. It's now in review and we'll begin preparing it shortly.", 18)
+            + progressTracker(ORDER_STEPS, 0)
             + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "In Review", highlight: true }])
             + customizationNote
             + deliveryNotice(order?.delivery_state),
@@ -131,6 +158,7 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Confirmed",
           headline: "Your order has been confirmed.",
           bodyHtml: p(`Hi ${firstName}, great news - your order has been confirmed and we're getting it ready. Estimated delivery: within 7 days.`, 18)
+            + progressTracker(ORDER_STEPS, 0)
             + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Estimated Delivery", value: "Within 7 days" }])
             + guaranteeNote(),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
@@ -145,6 +173,7 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Processing",
           headline: "Your order is being prepared.",
           bodyHtml: p("We're working on your order now. We'll send tracking details as soon as it ships.", 18)
+            + progressTracker(ORDER_STEPS, 1)
             + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "Processing", highlight: true }]),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
           ctaSecondaryLabel: viewOrder.label, ctaSecondaryUrl: viewOrder.url,
@@ -153,9 +182,7 @@ function buildOrderEmailContent(
       };
     case "Order shipped 🚚": {
       const days = daysRemainingFrom(order?.confirmed_at);
-      const facts: EmailFact[] = [];
-      if (order?.tracking_number) facts.push({ label: "Tracking Number", value: esc(order.tracking_number) });
-      facts.push({ label: "Estimated Delivery", value: `Within ${days} day${days === 1 ? "" : "s"}` });
+      const facts: EmailFact[] = [{ label: "Estimated Delivery", value: `Within ${days} day${days === 1 ? "" : "s"}` }];
       const secondary = order?.tracking_link ? { label: "Track Your Package", url: esc(order.tracking_link) } : viewOrder;
       return {
         subject: alertTitle,
@@ -163,6 +190,8 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Shipped",
           headline: "Your order is on its way!",
           bodyHtml: p(`Hi ${firstName}, your order has shipped and should arrive within the next ${days} day${days === 1 ? "" : "s"}.`, 18)
+            + progressTracker(ORDER_STEPS, 2)
+            + (order?.tracking_number ? trackingCard(order.tracking_number, order?.tracking_link || undefined) : "")
             + orderCard("Order Summary", items, facts)
             + shippedDeliveryNote(order?.delivery_state)
             + guaranteeNote(),
@@ -179,6 +208,7 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Delivered",
           headline: "Your order has been delivered!",
           bodyHtml: p("We hope you love it! Thank you so much for shopping with Dritchwear.", 18)
+            + progressTracker(ORDER_STEPS, 3)
             + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "Delivered", highlight: true }]),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
           ctaSecondaryLabel: shopAgain.label, ctaSecondaryUrl: shopAgain.url,
