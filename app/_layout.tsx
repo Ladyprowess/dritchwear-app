@@ -481,8 +481,20 @@ export default function RootLayout() {
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (refreshing) return;
-        refreshing = true;
-        window.location.reload();
+        // A new service worker can take over mid-session at any time (e.g.
+        // right after a deploy). Reloading immediately used to blow away
+        // whatever was on screen - including an open Paystack payment
+        // overlay mid-checkout. Wait until no payment is in progress instead
+        // of forcing it through a live payment attempt.
+        const tryReload = () => {
+          if ((window as any).__dritchwearPaymentActive) {
+            setTimeout(tryReload, 2000);
+            return;
+          }
+          refreshing = true;
+          window.location.reload();
+        };
+        tryReload();
       });
     }
 

@@ -155,6 +155,13 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
   const startPayment = () => {
     const PaystackPop = (window as any).PaystackPop;
     if (!PaystackPop) return;
+    // Nothing was catching a throw here - an uncaught error inside this
+    // effect can, on some Android WebView/PWA runtimes, trigger the
+    // browser's own crash-recovery reload instead of just failing quietly,
+    // which looks identical to the app dumping the customer back on the
+    // home screen mid-payment. Fail closed (back to the checkout screen)
+    // instead of letting that happen.
+    try {
     const handler = PaystackPop.setup({
       key: publicKey,
       email,
@@ -169,6 +176,10 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
       onClose: () => onCancel(),
     });
     handler.openIframe();
+    } catch (e) {
+      console.error('[PaystackPayment] setup/openIframe failed:', e);
+      onCancel();
+    }
   };
 
   useEffect(() => {
