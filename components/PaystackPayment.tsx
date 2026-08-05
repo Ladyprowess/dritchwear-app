@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { Platform, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
 
 interface PaystackPaymentProps {
   email: string;
@@ -118,41 +118,66 @@ window.addEventListener('load', function() {
 }
 
 // ---------------------------------------------------------------------------
-// Web renderer - uses a plain <iframe> via srcdoc (Safari compatible)
+// Web renderer - loads Paystack's inline.js directly into the top-level
+// document and calls openIframe() from there, same as /pay/[token].tsx.
+// openIframe() isn't meant to run inside a nested <iframe> - Paystack can
+// fall back to navigating the top-level page when it's invoked from one,
+// which used to blow away the whole app (reload straight to the home
+// screen) the moment "Pay with Paystack" was tapped, before the customer
+// ever saw a payment screen.
 // ---------------------------------------------------------------------------
 function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerName, orderId }: PaystackPaymentProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const html = buildHtml(publicKey, email, amount, customerName ?? 'Customer', orderId ?? '');
+  const [scriptReady, setScriptReady] = useState(false);
+  const openedRef = useRef(false);
 
   useEffect(() => {
-    const handler = (event: MessageEvent) => {
-      try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (data.type === 'success') onSuccess(data.data);
-        else if (data.type === 'cancel') onCancel();
-        else if (data.type === 'error') onCancel();
-      } catch {
-        // ignore unrelated messages
-      }
+    const script = (document as any).createElement('script');
+    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.async = true;
+    script.onload = () => setScriptReady(true);
+    script.onerror = () => setScriptReady(true); // let startPayment surface the error
+    (document as any).head.appendChild(script);
+    return () => {
+      try { (document as any).head.removeChild(script); } catch {}
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, [onSuccess, onCancel]);
+  }, []);
 
-  // Use a blob URL so Paystack's popup isn't blocked by Safari's iframe sandbox
-  const blob = new Blob([html], { type: 'text/html' });
-  const blobUrl = URL.createObjectURL(blob);
+  const startPayment = () => {
+    const PaystackPop = (window as any).PaystackPop;
+    if (!PaystackPop) return;
+    const handler = PaystackPop.setup({
+      key: publicKey,
+      email,
+      amount: Math.round(amount * 100),
+      currency: 'NGN',
+      ref: 'dw_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+      metadata: { custom_fields: [
+        { display_name: 'Customer', variable_name: 'customer_name', value: customerName ?? 'Customer' },
+        { display_name: 'Order Token', variable_name: 'token', value: orderId || '' },
+      ] },
+      callback: (response: any) => onSuccess(response),
+      onClose: () => onCancel(),
+    });
+    handler.openIframe();
+  };
+
+  useEffect(() => {
+    if (scriptReady && !openedRef.current) {
+      openedRef.current = true;
+      startPayment();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scriptReady]);
 
   return (
-    <View style={{ flex: 1 }}>
-      {/* @ts-ignore - iframe is a valid web element via react-native-web */}
-      <iframe
-        ref={iframeRef}
-        src={blobUrl}
-        style={{ flex: 1, border: 'none', width: '100%', height: '100%' }}
-        allow="payment"
-        title="Paystack Payment"
-      />
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
+      <ActivityIndicator size="large" color="#5A2D82" />
+      <Text style={{ fontSize: 14, color: '#6B7280' }}>
+        {scriptReady ? 'Opening secure payment…' : 'Loading payment…'}
+      </Text>
+      <Pressable onPress={onCancel} style={{ paddingVertical: 10, paddingHorizontal: 20 }}>
+        <Text style={{ fontSize: 14, color: '#6B7280' }}>Cancel</Text>
+      </Pressable>
     </View>
   );
 }
