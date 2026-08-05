@@ -21,6 +21,7 @@ import { usePaymentOrchestration } from '@/features/customer/checkout/hooks/useP
 
 import { OrderSummarySection } from '@/features/customer/checkout/components/OrderSummarySection';
 import { DeliveryAddressSection } from '@/features/customer/checkout/components/DeliveryAddressSection';
+import { DeliveryNoticeSection } from '@/features/customer/checkout/components/DeliveryNoticeSection';
 import { ContactPhoneSection } from '@/features/customer/checkout/components/ContactPhoneSection';
 import { OrderTotalsSection } from '@/features/customer/checkout/components/OrderTotalsSection';
 import { OrderNoteSection } from '@/features/customer/checkout/components/OrderNoteSection';
@@ -172,9 +173,17 @@ export default function CheckoutScreen() {
             onDeliveryCountryChange={setDeliveryCountry}
           />
 
+          <DeliveryNoticeSection deliveryState={deliveryState} />
+
           <ContactPhoneSection
             contactPhone={contactPhone}
             onContactPhoneChange={setContactPhone}
+          />
+
+          <ChatHelpBanner
+            title="Having trouble placing your order?"
+            subtitle="Message us and we'll help you check out"
+            style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 24 }}
           />
 
           <OrderTotalsSection
@@ -207,12 +216,6 @@ export default function CheckoutScreen() {
             onPayWithWallet={() => handleOrder('wallet')}
             onPayWithCard={() => handleOrder('card')}
             onPayForMe={handlePayForMe}
-          />
-
-          <ChatHelpBanner
-            title="Having trouble placing your order?"
-            subtitle="Message us and we'll help you check out"
-            style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 24 }}
           />
         </ScrollView>
       </SafeAreaView>

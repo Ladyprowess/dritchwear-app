@@ -115,6 +115,16 @@ export default function ReturnsBody() {
             {['Standard shipping: 3–5 business days within Nigeria', 'Express shipping: 1–2 business days available', 'Overnight shipping option available', 'International shipping: 7–14 business days'].map(t => (
               <View key={t} style={s.opRow}><View style={s.opDot} /><Text style={s.opText}>{t}</Text></View>
             ))}
+            <View style={s.giglNotice}>
+              <Text style={s.giglNoticeText}>
+                Orders outside Lagos are shipped via <Text style={s.giglNoticeBold}>God Is Good Logistics (GIGL)</Text>. Delivery availability depends on GIGL's service coverage - where doorstep delivery isn't available, you'll need to collect your order from the nearest GIGL office. We currently ship only to destinations supported by GIGL.
+              </Text>
+            </View>
+            <View style={s.giglNotice}>
+              <Text style={s.giglNoticeText}>
+                We're also currently unable to deliver to a few far-out Lagos areas: <Text style={s.giglNoticeBold}>Badagry</Text>, <Text style={s.giglNoticeBold}>Epe and areas past Awoyaya</Text>, <Text style={s.giglNoticeBold}>deep Ikorodu</Text> (Owutu, Igbogbo, Ijede), <Text style={s.giglNoticeBold}>Okokomaiko / Ojo / Trade Fair</Text>, and <Text style={s.giglNoticeBold}>Agbara</Text>. If you're in one of these areas, please contact us before ordering.
+              </Text>
+            </View>
           </View>
           <View style={s.opsDivider} />
           <View style={{ flex: 1 }}>
@@ -172,4 +182,7 @@ const s = StyleSheet.create({
   opDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: P, marginTop: 7 },
   opText: { flex: 1, fontSize: 12, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 18 },
   opsFooter: { marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F3F4F6', fontSize: 12, fontFamily: 'Inter-Regular', color: '#6B7280', textAlign: 'center' },
+  giglNotice: { marginTop: 12, padding: 10, backgroundColor: '#F3EFF7', borderRadius: 10, borderWidth: 1, borderColor: '#DDD3EC' },
+  giglNoticeText: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#4B3A63', lineHeight: 17 },
+  giglNoticeBold: { fontFamily: 'Inter-Bold', color: '#3B1F57' },
 });

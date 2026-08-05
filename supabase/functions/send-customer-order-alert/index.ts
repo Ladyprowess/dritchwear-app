@@ -39,6 +39,31 @@ function guaranteeNote(): string {
   return infoBox("Estimated delivery is within 7 days of confirmation. If it's taking longer than expected, message us on WhatsApp and we'll sort it out.");
 }
 
+// GIGL only handles deliveries outside Lagos - Lagos orders go out directly,
+// so the GIGL notices below don't apply to them. Within Lagos, a handful of
+// far-out areas are also unreachable in practice (riders won't take the
+// trip, or price it prohibitively) - those get their own note instead.
+function isLagos(state: string | null | undefined): boolean {
+  return String(state || "").trim().toLowerCase().includes("lagos");
+}
+
+const LAGOS_EXCLUDED_AREAS_NOTE =
+  "<strong style=\"color:#17131C\">Delivery Information</strong><br/>We're currently unable to deliver to a few far-out Lagos areas: <strong style=\"color:#17131C\">Badagry</strong>, <strong style=\"color:#17131C\">Epe and areas past Awoyaya</strong>, <strong style=\"color:#17131C\">deep Ikorodu</strong> (Owutu, Igbogbo, Ijede), <strong style=\"color:#17131C\">Okokomaiko / Ojo / Trade Fair</strong>, and <strong style=\"color:#17131C\">Agbara</strong>. If your order is headed to one of these areas, message us on WhatsApp so we can sort out delivery.";
+
+function deliveryNotice(deliveryState: string | null | undefined): string {
+  if (isLagos(deliveryState)) return infoBox(LAGOS_EXCLUDED_AREAS_NOTE);
+  return infoBox(
+    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>For deliveries outside Lagos, your order will be shipped through <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong>. Depending on your delivery location, your package may be delivered to your doorstep or made available for pickup at the nearest GIGL office. We currently ship only to locations covered by GIGL's delivery network. If your selected location requires pickup, we'll notify you of the pickup location once your order has been dispatched."
+  );
+}
+
+function shippedDeliveryNote(deliveryState: string | null | undefined): string {
+  if (isLagos(deliveryState)) return infoBox(LAGOS_EXCLUDED_AREAS_NOTE);
+  return infoBox(
+    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>Your order has been shipped via <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong>. Please note that the final delivery method depends on GIGL's coverage for your location - some locations are eligible for <strong style=\"color:#17131C\">doorstep delivery</strong>, while others require <strong style=\"color:#17131C\">pickup</strong> from the nearest GIGL office. We currently ship only to locations served by GIGL. If your shipment requires pickup, GIGL will notify you when it's ready for collection."
+  );
+}
+
 interface OrderItemSummary {
   name?: string;
   size?: string;
@@ -62,6 +87,7 @@ interface OrderEmailContext {
   payment_status: string | null;
   total: number | null;
   currency: string | null;
+  delivery_state: string | null;
 }
 
 function buildOrderEmailContent(
@@ -86,7 +112,8 @@ function buildOrderEmailContent(
           eyebrow: "Order Update &middot; Payment Received",
           headline: `Thank you, ${firstName}!`,
           bodyHtml: p("We've received your payment for your Dritchwear order. It's now in review and we'll begin preparing it shortly.", 18)
-            + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "In Review", highlight: true }]),
+            + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "In Review", highlight: true }])
+            + deliveryNotice(order?.delivery_state),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
           ctaSecondaryLabel: viewOrder.label, ctaSecondaryUrl: viewOrder.url,
           footerNote: "We're excited to get this made for you. Reach out anytime if you have questions.",
@@ -130,8 +157,9 @@ function buildOrderEmailContent(
         html: emailShell({
           eyebrow: "Order Update &middot; Shipped",
           headline: "Your order is on its way!",
-          bodyHtml: p(`Hi ${firstName}, your order has shipped and should arrive at your doorstep within the next ${days} day${days === 1 ? "" : "s"}.`, 18)
+          bodyHtml: p(`Hi ${firstName}, your order has shipped and should arrive within the next ${days} day${days === 1 ? "" : "s"}.`, 18)
             + orderCard("Order Summary", items, facts)
+            + shippedDeliveryNote(order?.delivery_state)
             + guaranteeNote(),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
           ctaSecondaryLabel: secondary.label, ctaSecondaryUrl: secondary.url,
@@ -254,7 +282,7 @@ async function sendOrderStatusEmail(
 
   let order: OrderEmailContext | null = null;
   if (entityType === "order" && entityId) {
-    const { data } = await db.from("orders").select("items, tracking_number, tracking_link, confirmed_at, payment_status, total, currency").eq("id", entityId).single();
+    const { data } = await db.from("orders").select("items, tracking_number, tracking_link, confirmed_at, payment_status, total, currency, delivery_state").eq("id", entityId).single();
     order = data;
   }
 
