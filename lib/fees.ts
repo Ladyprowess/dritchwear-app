@@ -47,6 +47,7 @@ export interface CommerceConfig {
   storeOpen: boolean;
   storeClosedMessage: string;
   deliveryZones: DeliveryZone[];
+  customizationFeeNgn: number; // flat fee per item that has a custom logo/design
 }
 
 // Defaults reproduce the previously hardcoded behaviour, so any call site that
@@ -59,6 +60,7 @@ export const DEFAULT_COMMERCE_CONFIG: CommerceConfig = {
   freeDeliveryThresholdNgn: 0,
   storeOpen: true,
   storeClosedMessage: 'We are briefly closed. Please check back soon.',
+  customizationFeeNgn: 2000,
   deliveryZones: [
     { name: 'Lagos', matchKeywords: ['lagos'], feeNgn: 3500, isDefault: false },
     {
@@ -141,6 +143,16 @@ export function calculateTax(
   return Math.round(subtotal * rate * 100) / 100;
 }
 
+// Flat fee per unit for any cart item flagged as a custom logo/design request
+// (image and/or description, on a product that allows branding) - not itself
+// subject to service fee % or tax, same treatment as delivery fee.
+export function calculateCustomizationFeeTotal(
+  items: Array<{ hasCustomizationFee?: boolean; quantity: number }>,
+  config: CommerceConfig = DEFAULT_COMMERCE_CONFIG
+): number {
+  return items.reduce((sum, item) => (item.hasCustomizationFee ? sum + config.customizationFeeNgn * item.quantity : sum), 0);
+}
+
 export function calculateOrderTotal(
   subtotal: number,
   location: string,
@@ -148,12 +160,14 @@ export function calculateOrderTotal(
   discountAmount: number = 0,
   promoType?: string,
   config: CommerceConfig = DEFAULT_COMMERCE_CONFIG,
+  customizationFeeTotal: number = 0,
 ): {
   subtotal: number;
   serviceFee: number;
   deliveryFee: number;
   tax: number;
   discountAmount: number;
+  customizationFee: number;
   total: number;
   currency: string;
 } {
@@ -165,7 +179,7 @@ export function calculateOrderTotal(
     : calculateDeliveryFee(location, discountedSubtotal, config);
   const tax = calculateTax(discountedSubtotal, location, currency, config);
 
-  const rawTotal = discountedSubtotal + serviceFee + deliveryFee + tax;
+  const rawTotal = discountedSubtotal + serviceFee + deliveryFee + tax + customizationFeeTotal;
   // NGN has no fractional kobo in practice - round to whole naira so the
   // stored amount_ngn, the order summary display, and Paystack all agree.
   const total = currency === 'NGN'
@@ -178,6 +192,7 @@ export function calculateOrderTotal(
     deliveryFee,
     tax,
     discountAmount,
+    customizationFee: customizationFeeTotal,
     total,
     currency,
   };

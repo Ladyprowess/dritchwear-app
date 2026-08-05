@@ -14,6 +14,7 @@ interface AddToCartItem {
   quantity: number;
   note?: string;
   logoUrl?: string;
+  hasCustomizationFee?: boolean;
 }
 
 interface UseAddToCartArgs {
@@ -121,10 +122,16 @@ export function useAddToCart({ product, productImages, lockedTier, addToCart, po
       }
 
       const trimmedNote = note.trim();
+      // A design request only counts as customization (and the fee that
+      // comes with it) on products that actually offer branding - the same
+      // note field is reused on regular products for plain sizing/fabric
+      // requests, which shouldn't be charged as a design fee.
+      const isCustomization = !!product.allow_logo_upload && !!(trimmedNote || logoUrl);
       const itemsToAdd = newItems.map((it) => ({
         ...it,
         ...(trimmedNote ? { note: trimmedNote } : {}),
         ...(logoUrl ? { logoUrl } : {}),
+        ...(isCustomization ? { hasCustomizationFee: true } : {}),
       }));
 
       await addToCart(itemsToAdd);

@@ -28,7 +28,7 @@ export function BrandingOrNoteSection({
     return (
       <View style={styles.selectionSection}>
         <Text style={styles.selectionTitle}>For branded outfits/items, insert logo or describe the design</Text>
-        <Text style={styles.noteHint}>Optional.</Text>
+        <Text style={styles.noteHint}>Optional. Custom logos, artwork, and personalised designs attract an additional customization fee, added to your order total at checkout.</Text>
         {logoUrl ? (
           <View style={styles.logoPreviewWrap}>
             <Image source={{ uri: optimizeImageUrl(logoUrl, { width: 240 }) as string }} style={styles.logoPreview} resizeMode="contain" />

@@ -3,7 +3,7 @@ import { Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePostHog } from 'posthog-react-native';
 import { supabase } from '@/lib/supabase';
-import { calculateOrderTotal, type CommerceConfig } from '@/lib/fees';
+import { calculateOrderTotal, calculateCustomizationFeeTotal, type CommerceConfig } from '@/lib/fees';
 import { buildPayLink } from '@/lib/pay-links';
 import { convertFromNGN, formatCurrency } from '@/lib/currency';
 import { logEvent } from '@/lib/analytics';
@@ -113,7 +113,8 @@ export function usePaymentOrchestration({
       const discountNGN = calculateDiscountNGN(items, appliedPromo, subtotalNGN);
       const discountedSubtotalNGN = subtotalNGN - discountNGN;
       const fullDeliveryAddress = getFullDeliveryAddress();
-      const orderTotalsForLink = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config);
+      const customizationFeeTotal = calculateCustomizationFeeTotal(items, config);
+      const orderTotalsForLink = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
 
       const orderItems = items.map(item => ({
         product_id: item.productId,
@@ -124,6 +125,7 @@ export function usePaymentOrchestration({
         color: item.color,
         note: item.note ?? null,
         logo_url: item.logoUrl ?? null,
+        has_customization_fee: item.hasCustomizationFee ?? false,
       }));
 
       // Create order with pending_payment status
@@ -136,6 +138,7 @@ export function usePaymentOrchestration({
           service_fee: orderTotalsForLink.serviceFee,
           delivery_fee: orderTotalsForLink.deliveryFee,
           tax: orderTotalsForLink.tax,
+          customization_fee: orderTotalsForLink.customizationFee,
           total: orderTotalsForLink.total,
           payment_method: 'pay_link',
           payment_status: 'pending_payment',
@@ -211,6 +214,7 @@ export function usePaymentOrchestration({
         color: item.color,
         note: item.note ?? null,
         logo_url: item.logoUrl ?? null,
+        has_customization_fee: item.hasCustomizationFee ?? false,
       }));
 
       const fullDeliveryAddress = getFullDeliveryAddress();
@@ -248,6 +252,7 @@ export function usePaymentOrchestration({
           service_fee: orderTotals.serviceFee,
           delivery_fee: orderTotals.deliveryFee,
           tax: orderTotals.tax,
+          customization_fee: orderTotals.customizationFee,
           total: orderTotals.total,
           payment_method: 'wallet',
           payment_status: 'paid',
@@ -382,8 +387,9 @@ export function usePaymentOrchestration({
       const discountNGN = calculateDiscountNGN(items, appliedPromo, subtotalNGN);
       const discountedSubtotalNGN = subtotalNGN - discountNGN;
       const fullDeliveryAddress = getFullDeliveryAddress();
+      const customizationFeeTotal = calculateCustomizationFeeTotal(items, config);
 
-      const orderTotals = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config);
+      const orderTotals = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
 
       // For wallet payment, check balance
       if (paymentMethod === 'wallet') {
@@ -417,6 +423,7 @@ export function usePaymentOrchestration({
           color: item.color,
           note: item.note ?? null,
           logo_url: item.logoUrl ?? null,
+          has_customization_fee: item.hasCustomizationFee ?? false,
         }));
 
         if (paymentMethod === 'card' && userCurrency === 'NGN') {
@@ -445,6 +452,7 @@ export function usePaymentOrchestration({
               service_fee: orderTotals.serviceFee,
               delivery_fee: orderTotals.deliveryFee,
               tax: orderTotals.tax,
+              customization_fee: orderTotals.customizationFee,
               total: orderTotals.total,
               payment_method: 'paystack',
               payment_status: 'pending_payment',

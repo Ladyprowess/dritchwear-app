@@ -104,6 +104,7 @@ export default function CustomerOrdersScreen() {
         ? item.note.trim()
         : undefined,
       logoUrl:      typeof item.logo_url === 'string' && item.logo_url ? item.logo_url : undefined,
+      hasCustomizationFee: item.has_customization_fee ?? false,
     }));
 
     await addToCart(cartItems);

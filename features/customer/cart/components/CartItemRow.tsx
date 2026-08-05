@@ -32,6 +32,9 @@ export function CartItemRow({ item, itemPriceInUserCurrency, userCurrency, onInc
         {!!item.note && (
           <Text style={styles.itemNote}>Note: {item.note}</Text>
         )}
+        {!!item.hasCustomizationFee && (
+          <Text style={styles.itemNote}>Custom design added - a customization fee applies at checkout</Text>
+        )}
         <Text style={styles.itemPrice}>
           {formatCurrency(itemPriceInUserCurrency, userCurrency)}
         </Text>

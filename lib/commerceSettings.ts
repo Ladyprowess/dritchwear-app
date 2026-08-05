@@ -52,6 +52,7 @@ export async function fetchCommerceConfig(force = false): Promise<CommerceConfig
       freeDeliveryThresholdNgn: toNumber(s.free_delivery_threshold_ngn, 0),
       storeOpen: s.store_open === undefined ? true : !!s.store_open,
       storeClosedMessage: s.store_closed_message || DEFAULT_COMMERCE_CONFIG.storeClosedMessage,
+      customizationFeeNgn: toNumber(s.customization_fee_ngn, DEFAULT_COMMERCE_CONFIG.customizationFeeNgn),
       // Keep the hardcoded defaults if the admin hasn't defined any zones yet.
       deliveryZones: zones.length > 0 ? zones : DEFAULT_COMMERCE_CONFIG.deliveryZones,
     };

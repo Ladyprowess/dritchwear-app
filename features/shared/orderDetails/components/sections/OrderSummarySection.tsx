@@ -55,6 +55,12 @@ export function OrderSummarySection({ order }: OrderSummarySectionProps) {
           <Text style={styles.summaryLabel}>VAT</Text>
           <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order, order.tax || 0)}</Text>
         </View>
+        {(order.customization_fee ?? 0) > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Customization Fee</Text>
+            <Text style={styles.summaryValue}>{formatAmountInPaymentCurrency(order, order.customization_fee ?? 0)}</Text>
+          </View>
+        )}
         <View style={[styles.summaryRow, styles.summaryTotal]}>
           <Text style={styles.summaryTotalLabel}>Total</Text>
           <Text style={styles.summaryTotalValue}>{formatAmountInPaymentCurrency(order, order.total || 0)}</Text>

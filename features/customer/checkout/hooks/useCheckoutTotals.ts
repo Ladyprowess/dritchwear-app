@@ -1,4 +1,4 @@
-import { calculateOrderTotal, calculateServiceFee, type CommerceConfig } from '@/lib/fees';
+import { calculateOrderTotal, calculateServiceFee, calculateCustomizationFeeTotal, type CommerceConfig } from '@/lib/fees';
 import { convertFromNGN } from '@/lib/currency';
 import type { CartItem, AppliedPromo } from '@/contexts/CartContext';
 import { calculateDiscountNGN } from '../pricing';
@@ -47,16 +47,18 @@ export function useCheckoutTotals({
   // Only calculate delivery fee if address is provided
   const composedAddress = hasDeliveryAddress() ? getFullDeliveryAddress() : '';
   const noAddrServiceFee = calculateServiceFee(discountedSubtotalNGN, config);
+  const customizationFeeTotal = calculateCustomizationFeeTotal(items, config);
 
   const orderTotals = hasDeliveryAddress()
-    ? calculateOrderTotal(discountedSubtotalNGN, composedAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config)
+    ? calculateOrderTotal(discountedSubtotalNGN, composedAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal)
     : {
         subtotal: discountedSubtotalNGN,
         serviceFee: noAddrServiceFee,
         deliveryFee: 0,
         tax: 0,
         discountAmount: discountNGN,
-        total: Math.round((discountedSubtotalNGN + noAddrServiceFee) * 100) / 100,
+        customizationFee: customizationFeeTotal,
+        total: Math.round((discountedSubtotalNGN + noAddrServiceFee + customizationFeeTotal) * 100) / 100,
         currency: 'NGN',
       };
 
@@ -67,6 +69,7 @@ export function useCheckoutTotals({
     serviceFee: userCurrency === 'NGN' ? orderTotals.serviceFee : convertFromNGN(orderTotals.serviceFee, userCurrency),
     deliveryFee: userCurrency === 'NGN' ? orderTotals.deliveryFee : convertFromNGN(orderTotals.deliveryFee, userCurrency),
     tax: userCurrency === 'NGN' ? orderTotals.tax : convertFromNGN(orderTotals.tax, userCurrency),
+    customizationFee: userCurrency === 'NGN' ? orderTotals.customizationFee : convertFromNGN(orderTotals.customizationFee, userCurrency),
     total: userCurrency === 'NGN' ? orderTotals.total : convertFromNGN(orderTotals.total, userCurrency),
   };
 

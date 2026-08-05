@@ -39,6 +39,7 @@ export default function StoreSettingsScreen() {
   const [serviceFeePct, setServiceFeePct] = useState('2'); // shown as %
   const [taxPct, setTaxPct] = useState('7.5'); // shown as %
   const [minimumOrder, setMinimumOrder] = useState('1000');
+  const [customizationFee, setCustomizationFee] = useState('2000');
 
   // delivery_zones
   const [zones, setZones] = useState<DeliveryZoneRow[]>([]);
@@ -61,6 +62,7 @@ export default function StoreSettingsScreen() {
       setServiceFeePct(String(Math.round((Number(s.service_fee_percentage ?? 0.02)) * 1000) / 10));
       setTaxPct(String(Math.round((Number(s.tax_percentage ?? 0.075)) * 1000) / 10));
       setMinimumOrder(String(s.minimum_order_ngn ?? 1000));
+      setCustomizationFee(String(s.customization_fee_ngn ?? 2000));
     }
     if (zonesRes.data) setZones(zonesRes.data as DeliveryZoneRow[]);
     setLoading(false);
@@ -73,13 +75,14 @@ export default function StoreSettingsScreen() {
     const tax = Number(taxPct);
     const minOrder = Number(minimumOrder);
     const threshold = Number(freeThreshold);
+    const customFee = Number(customizationFee);
 
     if ([svc, tax].some((v) => !Number.isFinite(v) || v < 0 || v > 100)) {
       Alert.alert('Check your rates', 'Service fee and tax must be between 0 and 100%.');
       return;
     }
-    if ([minOrder, threshold].some((v) => !Number.isFinite(v) || v < 0)) {
-      Alert.alert('Check your amounts', 'Minimum order and free-delivery threshold cannot be negative.');
+    if ([minOrder, threshold, customFee].some((v) => !Number.isFinite(v) || v < 0)) {
+      Alert.alert('Check your amounts', 'Minimum order, free-delivery threshold, and customization fee cannot be negative.');
       return;
     }
 
@@ -92,6 +95,7 @@ export default function StoreSettingsScreen() {
       service_fee_percentage: svc / 100,
       tax_percentage: tax / 100,
       minimum_order_ngn: minOrder,
+      customization_fee_ngn: customFee,
       updated_at: new Date().toISOString(),
     }).eq('id', 'default');
     setSaving(false);
@@ -267,6 +271,11 @@ export default function StoreSettingsScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>Minimum order (₦)</Text>
             <TextInput style={styles.input} value={minimumOrder} onChangeText={setMinimumOrder} keyboardType="number-pad" placeholder="1000" placeholderTextColor="#9CA3AF" />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Customization fee (₦ per item)</Text>
+            <TextInput style={styles.input} value={customizationFee} onChangeText={setCustomizationFee} keyboardType="number-pad" placeholder="2000" placeholderTextColor="#9CA3AF" />
+            <Text style={styles.hint}>Charged once per item that has a custom logo or design uploaded.</Text>
           </View>
         </View>
 

@@ -61,6 +61,7 @@ export interface Order {
   service_fee?: number;
   delivery_fee?: number;
   tax?: number;
+  customization_fee?: number;
   total?: number;
   payment_method?: string;
   payment_status?: string;

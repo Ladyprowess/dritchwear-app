@@ -10,6 +10,7 @@ interface DisplayTotals {
   serviceFee: number;
   deliveryFee: number;
   tax: number;
+  customizationFee: number;
   total: number;
 }
 
@@ -83,6 +84,15 @@ export function OrderTotalsSection({
             {formatCurrency(displayTotals.tax, userCurrency)}
           </Text>
         </View>
+
+        {displayTotals.customizationFee > 0 && (
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Customization Fee</Text>
+            <Text style={styles.totalValue}>
+              {formatCurrency(displayTotals.customizationFee, userCurrency)}
+            </Text>
+          </View>
+        )}
 
         <View style={[styles.totalRow, styles.finalTotal]}>
           <Text style={styles.finalTotalLabel}>Total</Text>

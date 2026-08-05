@@ -88,6 +88,7 @@ interface OrderEmailContext {
   total: number | null;
   currency: string | null;
   delivery_state: string | null;
+  customization_fee: number | null;
 }
 
 function buildOrderEmailContent(
@@ -103,6 +104,9 @@ function buildOrderEmailContent(
   const viewOrder = { label: "View Your Order", url: fallbackUrl };
   const shopAgain = { label: "Shop Again at Dritchwear.com", url: `${SITE_URL}/shop` };
   const whatsapp = { label: "Message Us on WhatsApp", url: WHATSAPP_URL };
+  const customizationNote = order?.customization_fee && order.customization_fee > 0
+    ? p(`<strong style="color:#17131C">Customization</strong><br/>Your order includes a custom design. The customization fee (${naira(order.customization_fee)}) has been included in your total.`, 18)
+    : "";
 
   switch (alertTitle) {
     case "Payment received":
@@ -113,6 +117,7 @@ function buildOrderEmailContent(
           headline: `Thank you, ${firstName}!`,
           bodyHtml: p("We've received your payment for your Dritchwear order. It's now in review and we'll begin preparing it shortly.", 18)
             + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "In Review", highlight: true }])
+            + customizationNote
             + deliveryNotice(order?.delivery_state),
           ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
           ctaSecondaryLabel: viewOrder.label, ctaSecondaryUrl: viewOrder.url,
@@ -282,7 +287,7 @@ async function sendOrderStatusEmail(
 
   let order: OrderEmailContext | null = null;
   if (entityType === "order" && entityId) {
-    const { data } = await db.from("orders").select("items, tracking_number, tracking_link, confirmed_at, payment_status, total, currency, delivery_state").eq("id", entityId).single();
+    const { data } = await db.from("orders").select("items, tracking_number, tracking_link, confirmed_at, payment_status, total, currency, delivery_state, customization_fee").eq("id", entityId).single();
     order = data;
   }
 

@@ -92,6 +92,7 @@ export default function AdminOrdersScreen() {
           service_fee,
           delivery_fee,
           tax,
+          customization_fee,
           total,
           currency,
           original_amount,

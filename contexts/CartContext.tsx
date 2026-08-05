@@ -15,6 +15,13 @@ export interface CartItem {
   note?: string;
   /** Optional customer-uploaded logo image URL (when the product allows it). */
   logoUrl?: string;
+  /**
+   * True when this item is a custom logo/design request (image and/or
+   * description) on a product that allows it - distinct from `note` alone,
+   * which is also used for plain sizing/fabric requests on regular products
+   * that shouldn't attract a design fee.
+   */
+  hasCustomizationFee?: boolean;
 }
 
 export interface AppliedPromo {
