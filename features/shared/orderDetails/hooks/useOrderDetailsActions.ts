@@ -22,6 +22,8 @@ export function useOrderDetailsActions(
   const [updating, setUpdating] = useState(false);
   const [sendingReminder, setSendingReminder] = useState(false);
   const [givingCredit, setGivingCredit] = useState(false);
+  const [showRetryPaystack, setShowRetryPaystack] = useState(false);
+  const [retryingPayment, setRetryingPayment] = useState(false);
 
   const downloadImage = async (imageUrl: string) => {
     try {
@@ -338,16 +340,63 @@ export function useOrderDetailsActions(
     }
   };
 
+  // Lets a customer whose card checkout stalled in pending_payment (payment
+  // failed, or succeeded but the confirmation missed it) pay again for the
+  // same order, instead of needing an admin to notice and step in. Reuses
+  // the exact confirm-order-payment path checkout uses, so it settles
+  // through the same verified flow either way.
+  const handleRetryPayment = () => {
+    if (!order) return;
+    setShowRetryPaystack(true);
+  };
+
+  const handleRetryPaystackCancel = () => setShowRetryPaystack(false);
+
+  const handleRetryPaystackSuccess = async (response: any) => {
+    if (!order) return;
+    setShowRetryPaystack(false);
+    setRetryingPayment(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const jwt = sessionData.session?.access_token;
+      if (!jwt) throw new Error('Not signed in');
+
+      const confirmRes = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/confirm-order-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ orderId: order.id, reference: response?.reference || response?.trxref || '' }),
+      });
+      const result = await confirmRes.json().catch(() => ({} as any));
+      if (!result?.success) throw new Error(result?.error || 'Payment could not be confirmed');
+
+      Alert.alert('Payment successful', 'Your order has been confirmed.');
+      onOrderUpdate();
+      onClose();
+    } catch (error) {
+      // Same safety net as checkout: the order was already pending_payment
+      // before Paystack opened, so paystack-webhook / reconcile-pending-payments
+      // will settle it independently within minutes even if this call fails.
+      Alert.alert('Confirming your payment', "We're verifying your payment now. If it doesn't update within a few minutes, please contact support.");
+    } finally {
+      setRetryingPayment(false);
+    }
+  };
+
   return {
     updating,
     sendingReminder,
     givingCredit,
+    showRetryPaystack,
+    retryingPayment,
     downloadImage,
     handleRepeatOrder,
     handleStatusUpdate,
     handleShipWithTracking,
     handleGiveLateDeliveryCredit,
     handleSendPaymentReminder,
+    handleRetryPayment,
+    handleRetryPaystackCancel,
+    handleRetryPaystackSuccess,
     sendInvoice,
   };
 }

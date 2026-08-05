@@ -22,6 +22,7 @@ import { ProductReviewsSection } from './sections/ProductReviewsSection';
 import { DeliverySection } from './sections/DeliverySection';
 import { SendInvoiceModal } from './SendInvoiceModal';
 import { TrackingInfoModal } from './TrackingInfoModal';
+import { RetryOrderPaymentModal } from './RetryOrderPaymentModal';
 
 export default function OrderDetailsModal({
   order,
@@ -80,6 +81,8 @@ export default function OrderDetailsModal({
               isAdmin={isAdmin}
               sendingReminder={actions.sendingReminder}
               onSendPaymentReminder={actions.handleSendPaymentReminder}
+              retryingPayment={actions.retryingPayment}
+              onRetryPayment={actions.handleRetryPayment}
             />
 
             <StatusSection currentStatus={currentStatus} />
@@ -140,6 +143,16 @@ export default function OrderDetailsModal({
           visible={showTrackingModal}
           onClose={() => setShowTrackingModal(false)}
           onSubmit={actions.handleShipWithTracking}
+        />
+      )}
+
+      {!isAdmin && !custom && (
+        <RetryOrderPaymentModal
+          visible={actions.showRetryPaystack}
+          order={order}
+          userEmail={user?.email}
+          onSuccess={actions.handleRetryPaystackSuccess}
+          onCancel={actions.handleRetryPaystackCancel}
         />
       )}
     </>

@@ -10,9 +10,11 @@ interface OrderInfoSectionProps {
   isAdmin: boolean;
   sendingReminder: boolean;
   onSendPaymentReminder: () => void;
+  retryingPayment: boolean;
+  onRetryPayment: () => void;
 }
 
-export function OrderInfoSection({ order, isAdmin, sendingReminder, onSendPaymentReminder }: OrderInfoSectionProps) {
+export function OrderInfoSection({ order, isAdmin, sendingReminder, onSendPaymentReminder, retryingPayment, onRetryPayment }: OrderInfoSectionProps) {
   const custom = isCustomOrder(order);
   const actualPaymentCurrency = getActualPaymentCurrency(order);
   const customerPhone = order.contact_phone || order.profiles?.phone || null;
@@ -77,6 +79,19 @@ export function OrderInfoSection({ order, isAdmin, sendingReminder, onSendPaymen
             <Pressable accessibilityRole="button" accessibilityLabel="Send payment reminder" accessibilityState={{ busy: sendingReminder, disabled: sendingReminder }} disabled={sendingReminder} style={[styles.reminderButton, sendingReminder && { opacity: 0.6 }]} onPress={onSendPaymentReminder}>
               <Send size={16} color="#FFFFFF" />
               <Text style={styles.reminderButtonText}>{sendingReminder ? 'Sending…' : 'Send payment reminder'}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {!isAdmin && !custom && order.payment_method === 'paystack' && order.payment_status === 'pending_payment' && order.order_status !== 'cancelled' && (
+          <View style={styles.reminderCard}>
+            <View style={styles.infoContent}>
+              <Text style={styles.reminderTitle}>Payment pending</Text>
+              <Text style={styles.reminderHint}>{"This order hasn't been paid yet. Retry payment to complete it."}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry payment" accessibilityState={{ busy: retryingPayment, disabled: retryingPayment }} disabled={retryingPayment} style={[styles.reminderButton, retryingPayment && { opacity: 0.6 }]} onPress={onRetryPayment}>
+              <Send size={16} color="#FFFFFF" />
+              <Text style={styles.reminderButtonText}>{retryingPayment ? 'Confirming…' : 'Retry payment'}</Text>
             </Pressable>
           </View>
         )}
