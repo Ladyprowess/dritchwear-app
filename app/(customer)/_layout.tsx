@@ -344,7 +344,10 @@ export default function CustomerLayout() {
         async (payload) => {
           const n = payload.new as any;
           if (n.user_id && n.user_id !== user.id) return;
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted') {
+          // Skip the native OS popup while a Paystack payment overlay is open -
+          // it can interrupt/reload that overlay mid-checkout. In-app badge/
+          // banner below still update either way.
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && 'Notification' in window && window.Notification.permission === 'granted' && !(window as any).__dritchwearPaymentActive) {
             try {
               new window.Notification(n.title || 'Dritchwear update', {
                 body: n.message || 'You have a new notification.',

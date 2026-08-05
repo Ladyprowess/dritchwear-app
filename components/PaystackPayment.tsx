@@ -137,8 +137,18 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
     script.onload = () => setScriptReady(true);
     script.onerror = () => setScriptReady(true); // let startPayment surface the error
     (document as any).head.appendChild(script);
+
+    // The immediate "your order is waiting" payment reminder can insert a
+    // notification the instant this order is created - which, on a PWA, can
+    // pop a native OS notification right as this overlay is opening and
+    // interrupt/reload the page before the customer ever sees Paystack. This
+    // flag (checked in the customer layout's realtime handler) skips that one
+    // native popup while a payment is actively in progress.
+    (window as any).__dritchwearPaymentActive = true;
+
     return () => {
       try { (document as any).head.removeChild(script); } catch {}
+      (window as any).__dritchwearPaymentActive = false;
     };
   }, []);
 
