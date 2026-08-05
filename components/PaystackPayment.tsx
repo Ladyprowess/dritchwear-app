@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { supabase } from '@/lib/supabase';
 
 interface PaystackPaymentProps {
   email: string;
@@ -130,7 +131,45 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
   const [scriptReady, setScriptReady] = useState(false);
   const openedRef = useRef(false);
 
+  // iOS "Add to Home Screen" installs run in a constrained standalone webview
+  // that doesn't reliably support the in-page overlay below - Paystack can
+  // silently fall back to a full-page redirect there with nowhere for us to
+  // catch it, which looked exactly like the app crashing back to its start
+  // screen. That failure mode is specific to standalone mode (navigator.
+  // standalone) - Safari-in-a-tab and Android/desktop use the overlay below
+  // as normal. Route standalone iOS through Paystack's own hosted checkout
+  // page instead: a plain page navigation, which standalone PWAs handle fine.
+  const isIOSStandalone = typeof window !== 'undefined' && (window.navigator as any).standalone === true;
+  const [redirectError, setRedirectError] = useState<string | null>(null);
+  const redirectStartedRef = useRef(false);
+
   useEffect(() => {
+    if (!isIOSStandalone || !orderId || redirectStartedRef.current) return;
+    redirectStartedRef.current = true;
+    (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const jwt = sessionData.session?.access_token;
+        if (!jwt) throw new Error('Not signed in');
+        const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/initialize-checkout-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+          body: JSON.stringify({ orderId }),
+        });
+        const result = await res.json().catch(() => ({} as any));
+        if (!result?.success) throw new Error(result?.error || 'Could not start payment');
+        window.location.href = result.authorizationUrl;
+      } catch (e: any) {
+        setRedirectError(e?.message || 'Could not start payment');
+      }
+    })();
+  }, [isIOSStandalone, orderId]);
+
+  // Standalone iOS redirects above instead of using this overlay - skip
+  // loading Paystack's script for nothing in that case.
+  useEffect(() => {
+    if (isIOSStandalone && orderId) return;
+
     const script = (document as any).createElement('script');
     script.src = 'https://js.paystack.co/v1/inline.js';
     script.async = true;
@@ -150,7 +189,7 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
       try { (document as any).head.removeChild(script); } catch {}
       (window as any).__dritchwearPaymentActive = false;
     };
-  }, []);
+  }, [isIOSStandalone, orderId]);
 
   const startPayment = () => {
     const PaystackPop = (window as any).PaystackPop;
@@ -182,20 +221,42 @@ function PaystackWeb({ email, amount, publicKey, onSuccess, onCancel, customerNa
     }
   };
 
-  useEffect(() => {
-    if (scriptReady && !openedRef.current) {
-      openedRef.current = true;
-      startPayment();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scriptReady]);
+  const handlePayPress = () => {
+    if (openedRef.current) return;
+    openedRef.current = true;
+    startPayment();
+  };
 
+  // iOS Safari only allows a payment overlay to open when it's triggered
+  // directly inside a tap - not a moment later, once an async script finishes
+  // loading (which is what auto-opening on scriptReady did). Chrome on
+  // Android/desktop tolerates that delay; Safari can silently refuse it and
+  // Paystack can fall back to a full-page redirect, which looked exactly
+  // like the app crashing back to the home screen. Requiring an explicit tap
+  // here (same pattern as /pay/[token]'s working page) keeps the call inside
+  // a genuine user gesture on every platform.
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 }}>
-      <ActivityIndicator size="large" color="#5A2D82" />
-      <Text style={{ fontSize: 14, color: '#6B7280' }}>
-        {scriptReady ? 'Opening secure payment…' : 'Loading payment…'}
-      </Text>
+      {isIOSStandalone && orderId ? (
+        <>
+          <ActivityIndicator size="large" color="#5A2D82" />
+          <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center' }}>
+            {redirectError || 'Opening secure payment…'}
+          </Text>
+        </>
+      ) : !scriptReady ? (
+        <>
+          <ActivityIndicator size="large" color="#5A2D82" />
+          <Text style={{ fontSize: 14, color: '#6B7280' }}>Loading payment…</Text>
+        </>
+      ) : (
+        <Pressable
+          onPress={handlePayPress}
+          style={{ backgroundColor: '#5A2D82', borderRadius: 12, paddingVertical: 16, paddingHorizontal: 32 }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#FFFFFF' }}>Pay Now</Text>
+        </Pressable>
+      )}
       <Pressable onPress={onCancel} style={{ paddingVertical: 10, paddingHorizontal: 20 }}>
         <Text style={{ fontSize: 14, color: '#6B7280' }}>Cancel</Text>
       </Pressable>
