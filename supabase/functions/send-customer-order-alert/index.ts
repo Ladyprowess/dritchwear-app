@@ -53,14 +53,14 @@ const LAGOS_EXCLUDED_AREAS_NOTE =
 function deliveryNotice(deliveryState: string | null | undefined): string {
   if (isLagos(deliveryState)) return infoBox(LAGOS_EXCLUDED_AREAS_NOTE);
   return infoBox(
-    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>For deliveries outside Lagos, your order will be shipped through <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong>. Depending on your delivery location, your package may be delivered to your doorstep or made available for pickup at the nearest GIGL office. We currently ship only to locations covered by GIGL's delivery network. If your selected location requires pickup, we'll notify you of the pickup location once your order has been dispatched."
+    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>For deliveries outside Lagos, your order will be shipped through <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong> or <strong style=\"color:#17131C\">Speedaf</strong>. Depending on your delivery location, your package may be delivered to your doorstep or made available for pickup at the nearest office. We currently ship only to locations covered by these carriers' delivery networks. If your selected location requires pickup, we'll notify you of the pickup location once your order has been dispatched."
   );
 }
 
 function shippedDeliveryNote(deliveryState: string | null | undefined): string {
   if (isLagos(deliveryState)) return infoBox(LAGOS_EXCLUDED_AREAS_NOTE);
   return infoBox(
-    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>Your order has been shipped via <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong>. Please note that the final delivery method depends on GIGL's coverage for your location - some locations are eligible for <strong style=\"color:#17131C\">doorstep delivery</strong>, while others require <strong style=\"color:#17131C\">pickup</strong> from the nearest GIGL office. We currently ship only to locations served by GIGL. If your shipment requires pickup, GIGL will notify you when it's ready for collection."
+    "<strong style=\"color:#17131C\">Delivery Information</strong><br/>Your order has been shipped via <strong style=\"color:#17131C\">God Is Good Logistics (GIGL)</strong> or <strong style=\"color:#17131C\">Speedaf</strong>. Please note that the final delivery method depends on their coverage for your location - some locations are eligible for <strong style=\"color:#17131C\">doorstep delivery</strong>, while others require <strong style=\"color:#17131C\">pickup</strong> from the nearest office. We currently ship only to locations served by these carriers. If your shipment requires pickup, you'll be notified when it's ready for collection."
   );
 }
 

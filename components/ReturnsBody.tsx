@@ -117,7 +117,7 @@ export default function ReturnsBody() {
             ))}
             <View style={s.giglNotice}>
               <Text style={s.giglNoticeText}>
-                Orders outside Lagos are shipped via <Text style={s.giglNoticeBold}>God Is Good Logistics (GIGL)</Text>. Delivery availability depends on GIGL's service coverage - where doorstep delivery isn't available, you'll need to collect your order from the nearest GIGL office. We currently ship only to destinations supported by GIGL.
+                Orders outside Lagos are shipped via <Text style={s.giglNoticeBold}>God Is Good Logistics (GIGL)</Text> or <Text style={s.giglNoticeBold}>Speedaf</Text>. Delivery availability depends on these carriers' service coverage - where doorstep delivery isn't available, you'll need to collect your order from the nearest office. We currently ship only to destinations supported by these carriers.
               </Text>
             </View>
             <View style={s.giglNotice}>

@@ -11,12 +11,13 @@ interface DeliveryNoticeSectionProps {
 
 // Delivery expectations need to be visible before checkout, not buried in a
 // disclaimer afterward - it directly affects whether/how an order can even
-// be fulfilled. GIGL only handles deliveries outside Lagos; within Lagos,
-// a handful of far-out areas are also unreachable in practice (riders won't
-// take the trip, or price it prohibitively), so both cases need a heads-up.
+// be fulfilled. GIGL/Speedaf only handle deliveries outside Lagos; within
+// Lagos, a handful of far-out areas are also unreachable in practice (riders
+// won't take the trip, or price it prohibitively), so both cases need a
+// heads-up.
 export function DeliveryNoticeSection({ deliveryState }: DeliveryNoticeSectionProps) {
   // Nothing to judge yet - wait until they've actually typed a state instead
-  // of defaulting to the non-Lagos GIGL wording the moment checkout opens.
+  // of defaulting to the non-Lagos carrier wording the moment checkout opens.
   if (!deliveryState.trim()) return null;
 
   return (
@@ -30,7 +31,7 @@ export function DeliveryNoticeSection({ deliveryState }: DeliveryNoticeSectionPr
           </Text>
         ) : (
           <Text style={styles.deliveryNoticeText}>
-            For deliveries outside Lagos, we ship through <Text style={styles.deliveryNoticeBold}>God Is Good Logistics (GIGL)</Text>. Delivery options depend on your location - some locations qualify for <Text style={styles.deliveryNoticeBold}>doorstep delivery</Text>, while others require <Text style={styles.deliveryNoticeBold}>pickup</Text> from the nearest GIGL office. We currently deliver only to locations served by GIGL.
+            For deliveries outside Lagos, we ship through <Text style={styles.deliveryNoticeBold}>God Is Good Logistics (GIGL)</Text> or <Text style={styles.deliveryNoticeBold}>Speedaf</Text>. Delivery options depend on your location - some locations qualify for <Text style={styles.deliveryNoticeBold}>doorstep delivery</Text>, while others require <Text style={styles.deliveryNoticeBold}>pickup</Text> from the nearest office. We currently deliver only to locations served by these carriers.
           </Text>
         )}
       </View>
