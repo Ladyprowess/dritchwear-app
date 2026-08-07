@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.43.4";
 import webpush from "npm:web-push@3.6.7";
-import { esc, p, infoBox, summaryCard, emailShell, progressTracker, trackingCard, BOX_BORDER, type EmailFact } from "../_shared/emailBrand.ts";
+import { esc, p, infoBox, summaryCard, emailShell, progressTracker, trackingCard, BOX_BORDER, BOX_BG, GOLD, type EmailFact } from "../_shared/emailBrand.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 const WEB_PUSH_VAPID_PRIVATE_KEY = Deno.env.get("WEB_PUSH_VAPID_PRIVATE_KEY") || "";
@@ -52,6 +52,18 @@ function daysRemainingFrom(confirmedAt: string | null | undefined): number {
 
 function guaranteeNote(): string {
   return infoBox("Estimated delivery is within 7 days of confirmation. If it's taking longer than expected, message us on WhatsApp and we'll sort it out.");
+}
+
+// The actual review form already lives in the app (ProductReviewsSection
+// renders automatically once an order's status is "delivered") - this is
+// just the nudge to go add one, with a link that deep-links straight to
+// that order instead of the bare orders list.
+function reviewPrompt(): string {
+  return `<div style="text-align:center;padding:22px 20px;background:${BOX_BG};border:1px solid ${BOX_BORDER};border-radius:14px;margin:0 0 20px 0">
+    <div style="font-size:20px;letter-spacing:4px;color:${GOLD};margin:0 0 8px 0">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+    <div style="font-size:15px;font-weight:700;color:#17131C;margin:0 0 4px 0">How was your order?</div>
+    <div style="font-size:13px;line-height:19px;color:#6B6470">Tell other shoppers what you think - it only takes a minute.</div>
+  </div>`;
 }
 
 // GIGL only handles deliveries outside Lagos - Lagos orders go out directly,
@@ -201,7 +213,8 @@ function buildOrderEmailContent(
         }),
       };
     }
-    case "Order delivered 📦":
+    case "Order delivered 📦": {
+      const reviewUrl = entityId ? `${SITE_URL}/orders?orderId=${entityId}` : viewOrder.url;
       return {
         subject: alertTitle,
         html: emailShell({
@@ -209,12 +222,14 @@ function buildOrderEmailContent(
           headline: "Your order has been delivered!",
           bodyHtml: p("We hope you love it! Thank you so much for shopping with Dritchwear.", 18)
             + progressTracker(ORDER_STEPS, 3)
-            + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "Delivered", highlight: true }]),
-          ctaPrimaryLabel: whatsapp.label, ctaPrimaryUrl: whatsapp.url,
+            + orderCard("Order Summary", items, [{ label: "Order Number", value: orderNum }, { label: "Status", value: "Delivered", highlight: true }])
+            + reviewPrompt(),
+          ctaPrimaryLabel: "Leave a Review", ctaPrimaryUrl: reviewUrl,
           ctaSecondaryLabel: shopAgain.label, ctaSecondaryUrl: shopAgain.url,
-          footerNote: "If anything isn't perfect, reach out - we want you to love what you ordered.",
+          footerNote: "If anything isn't perfect, reach out on WhatsApp - we want you to love what you ordered.",
         }),
       };
+    }
     case "Order cancelled": {
       const wasPaid = order?.payment_status === "refunded";
       if (wasPaid) {
