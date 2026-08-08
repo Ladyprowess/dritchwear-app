@@ -163,6 +163,17 @@ const allItems = [
   ...(customData || [])
 ];
 
+// The open details modal is bound to selectedOrder, a separate snapshot
+// taken when it was opened - refetching the list alone (onOrderUpdate)
+// never touched it, so actions that refresh data without also closing the
+// modal (e.g. giving a late-delivery credit) kept showing stale state
+// (the "give credit" button/banner) even though the DB had already updated.
+setSelectedOrder((prev) => {
+  if (!prev) return prev;
+  const fresh = allItems.find((item: any) => item.id === prev.id);
+  return fresh ? (fresh as any) : prev;
+});
+
 filterOrders(allItems, selectedStatus, searchQuery);
       
 } catch (err) {

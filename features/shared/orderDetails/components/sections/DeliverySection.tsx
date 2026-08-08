@@ -60,7 +60,7 @@ export function DeliverySection({ order, isAdmin, givingCredit, onGiveLateDelive
           </View>
         ) : null}
 
-        {isAdmin && !alreadyCredited && (
+        {isAdmin && !alreadyCredited && eligibleForGuarantee && (
           <Pressable
             style={[local.creditButton, givingCredit && local.creditButtonDisabled]}
             onPress={onGiveLateDeliveryCredit}

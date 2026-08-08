@@ -75,6 +75,17 @@ export default function CustomerOrdersScreen() {
     setShowOrderModal(true);
   };
 
+  // selectedOrder is a snapshot taken when the modal opened - refetching the
+  // list alone (onOrderUpdate/realtime) never touched it, so an action that
+  // refreshes data without also closing the modal kept showing stale state
+  // in the open details view even after the database had already updated.
+  useEffect(() => {
+    if (!selectedOrder) return;
+    const fresh = filteredOrders.find((order) => order.id === selectedOrder.id);
+    if (fresh && fresh !== selectedOrder) setSelectedOrder(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredOrders]);
+
   // Supports emailed links like /orders?orderId=<id> (payment reminders,
   // status updates) opening straight into that order instead of dropping the
   // customer on the bare list. Only fires once per link, even if
