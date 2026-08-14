@@ -76,9 +76,16 @@ export default function SupportTicketModal({ ticket, visible, onClose, onUpdate 
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  // Only auto-scroll to the bottom when a genuinely new message arrives, not
+  // on every re-fetch (realtime fires on attachments too, and a re-fetch
+  // after e.g. a status change carries no new messages) - otherwise every
+  // fetch yanked the thread back down mid-read, making it feel impossible
+  // to scroll up through history.
+  const previousMessageCountRef = useRef(0);
 
   useEffect(() => {
     if (ticket && visible) {
+      previousMessageCountRef.current = 0;
       fetchMessages();
     }
   }, [ticket, visible]);
@@ -130,9 +137,14 @@ export default function SupportTicketModal({ ticket, visible, onClose, onUpdate 
       setMessages(data || []);
       const attMap = await loadAttachmentsForMessages((data || []).map((m: any) => m.id));
       setAttachmentsMap(attMap);
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+
+      const isNewMessage = (data || []).length > previousMessageCountRef.current;
+      previousMessageCountRef.current = (data || []).length;
+      if (isNewMessage) {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
     } catch (error) {
       console.error('Error fetching messages:', error);
       Alert.alert('Error', 'Failed to load messages');
@@ -435,9 +447,6 @@ if (isAdmin) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 140 }}
-        onContentSizeChange={() =>
-          scrollViewRef.current?.scrollToEnd({ animated: true })
-        }
       >
         <View style={styles.initialMessage}>
           <Text style={styles.initialMessageTitle}>Original Request</Text>
