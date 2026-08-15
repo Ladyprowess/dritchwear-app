@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,6 +7,8 @@ import { useCart } from '@/contexts/CartContext';
 import { ArrowRight, Tag } from 'lucide-react-native';
 import { getItemPriceInUserCurrency } from '@/lib/currency';
 import { usePostHog } from 'posthog-react-native';
+import { fetchCommerceConfig } from '@/lib/commerceSettings';
+import { DEFAULT_COMMERCE_CONFIG } from '@/lib/fees';
 
 import { usePromoCode } from '@/features/customer/cart/hooks/usePromoCode';
 import { CartItemRow } from '@/features/customer/cart/components/CartItemRow';
@@ -20,12 +22,19 @@ export default function CartScreen() {
   const { profile, user } = useAuth();
   const { items, updateQuantity, removeItem, clearCart, getTotalItems, appliedPromo, setAppliedPromo } = useCart();
   const posthog = usePostHog();
+  const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(DEFAULT_COMMERCE_CONFIG.minimumOrderQuantity);
 
   const userCurrency = profile?.preferred_currency || 'NGN';
 
   useEffect(() => {
     posthog.capture('cart_viewed', { items_count: items.length });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchCommerceConfig().then((c) => { if (active) setMinimumOrderQuantity(c.minimumOrderQuantity); });
+    return () => { active = false; };
   }, []);
 
   const subtotalInUserCurrency = items.reduce((sum, item) => {
@@ -110,6 +119,13 @@ export default function CartScreen() {
   const handleCheckout = async () => {
     if (items.length === 0) {
       Alert.alert('Empty Cart', 'Your cart is empty. Add some items before checkout.');
+      return;
+    }
+    if (getTotalItems() < minimumOrderQuantity) {
+      Alert.alert(
+        'Minimum Order Not Met',
+        `We require at least ${minimumOrderQuantity} items per order. Add ${minimumOrderQuantity - getTotalItems()} more item${minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to continue.`
+      );
       return;
     }
     if (!user) {
@@ -205,7 +221,16 @@ export default function CartScreen() {
       </ScrollView>
 
       <View style={styles.checkoutSection}>
-        <Pressable style={styles.checkoutButton} onPress={handleCheckout}>
+        {getTotalItems() < minimumOrderQuantity && (
+          <Text style={{ fontSize: 13, fontFamily: 'Inter-Medium', color: '#B45309', textAlign: 'center', marginBottom: 10 }}>
+            Add {minimumOrderQuantity - getTotalItems()} more item{minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to meet our {minimumOrderQuantity}-item minimum order
+          </Text>
+        )}
+        <Pressable
+          style={[styles.checkoutButton, getTotalItems() < minimumOrderQuantity && { opacity: 0.5 }]}
+          onPress={handleCheckout}
+          disabled={getTotalItems() < minimumOrderQuantity}
+        >
           <Text style={styles.checkoutButtonText}>
             Proceed to Checkout
           </Text>

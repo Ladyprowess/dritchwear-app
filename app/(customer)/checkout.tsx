@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -147,6 +147,10 @@ export default function CheckoutScreen() {
   return (
     <>
       <SafeAreaView style={styles.container}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <View style={styles.header}>
           <Pressable style={styles.backButton} onPress={() => smartBack(router, '/(customer)/cart')}>
             <ArrowLeft size={24} color="#1F2937" />
@@ -216,8 +220,10 @@ export default function CheckoutScreen() {
             onPayWithWallet={() => handleOrder('wallet')}
             onPayWithCard={() => handleOrder('card')}
             onPayForMe={handlePayForMe}
+            itemsNeededForMinimum={Math.max(0, config.minimumOrderQuantity - getTotalItems())}
           />
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
 
       <AddressPromptModal

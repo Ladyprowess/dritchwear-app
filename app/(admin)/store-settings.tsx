@@ -39,6 +39,7 @@ export default function StoreSettingsScreen() {
   const [serviceFeePct, setServiceFeePct] = useState('2'); // shown as %
   const [taxPct, setTaxPct] = useState('7.5'); // shown as %
   const [minimumOrder, setMinimumOrder] = useState('1000');
+  const [minimumOrderQty, setMinimumOrderQty] = useState('5');
   const [customizationFee, setCustomizationFee] = useState('2000');
 
   // delivery_zones
@@ -62,6 +63,7 @@ export default function StoreSettingsScreen() {
       setServiceFeePct(String(Math.round((Number(s.service_fee_percentage ?? 0.02)) * 1000) / 10));
       setTaxPct(String(Math.round((Number(s.tax_percentage ?? 0.075)) * 1000) / 10));
       setMinimumOrder(String(s.minimum_order_ngn ?? 1000));
+      setMinimumOrderQty(String(s.minimum_order_quantity ?? 5));
       setCustomizationFee(String(s.customization_fee_ngn ?? 2000));
     }
     if (zonesRes.data) setZones(zonesRes.data as DeliveryZoneRow[]);
@@ -74,6 +76,7 @@ export default function StoreSettingsScreen() {
     const svc = Number(serviceFeePct);
     const tax = Number(taxPct);
     const minOrder = Number(minimumOrder);
+    const minOrderQty = Number(minimumOrderQty);
     const threshold = Number(freeThreshold);
     const customFee = Number(customizationFee);
 
@@ -83,6 +86,10 @@ export default function StoreSettingsScreen() {
     }
     if ([minOrder, threshold, customFee].some((v) => !Number.isFinite(v) || v < 0)) {
       Alert.alert('Check your amounts', 'Minimum order, free-delivery threshold, and customization fee cannot be negative.');
+      return;
+    }
+    if (!Number.isInteger(minOrderQty) || minOrderQty < 1) {
+      Alert.alert('Check minimum quantity', 'Minimum order quantity must be a whole number of at least 1.');
       return;
     }
 
@@ -95,6 +102,7 @@ export default function StoreSettingsScreen() {
       service_fee_percentage: svc / 100,
       tax_percentage: tax / 100,
       minimum_order_ngn: minOrder,
+      minimum_order_quantity: minOrderQty,
       customization_fee_ngn: customFee,
       updated_at: new Date().toISOString(),
     }).eq('id', 'default');
@@ -271,6 +279,11 @@ export default function StoreSettingsScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>Minimum order (₦)</Text>
             <TextInput style={styles.input} value={minimumOrder} onChangeText={setMinimumOrder} keyboardType="number-pad" placeholder="1000" placeholderTextColor="#9CA3AF" />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Minimum order quantity (pieces)</Text>
+            <TextInput style={styles.input} value={minimumOrderQty} onChangeText={setMinimumOrderQty} keyboardType="number-pad" placeholder="5" placeholderTextColor="#9CA3AF" />
+            <Text style={styles.hint}>Customers must have at least this many items in their cart to check out - blocks at both the cart and checkout screens. Applies alongside the ₦ minimum above (both must be met).</Text>
           </View>
           <View style={styles.field}>
             <Text style={styles.label}>Customization fee (₦ per item)</Text>

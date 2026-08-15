@@ -89,6 +89,16 @@ export function usePaymentOrchestration({
       );
       return true;
     }
+    // Safety net for the same rule enforced (and normally already caught) at
+    // the cart screen - covers checkout being reached another way, e.g. a
+    // saved link or the items being trimmed after arriving here.
+    if (getTotalItems() < config.minimumOrderQuantity) {
+      showCheckoutNotice(
+        'Minimum Order Not Met',
+        `We require at least ${config.minimumOrderQuantity} items per order. Please add ${config.minimumOrderQuantity - getTotalItems()} more item${config.minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to continue.`
+      );
+      return true;
+    }
     return false;
   };
 

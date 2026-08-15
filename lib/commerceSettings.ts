@@ -48,6 +48,7 @@ export async function fetchCommerceConfig(force = false): Promise<CommerceConfig
       serviceFeePercentage: toNumber(s.service_fee_percentage, DEFAULT_COMMERCE_CONFIG.serviceFeePercentage),
       taxPercentage: toNumber(s.tax_percentage, DEFAULT_COMMERCE_CONFIG.taxPercentage),
       minimumOrderNgn: toNumber(s.minimum_order_ngn, DEFAULT_COMMERCE_CONFIG.minimumOrderNgn),
+      minimumOrderQuantity: toNumber(s.minimum_order_quantity, DEFAULT_COMMERCE_CONFIG.minimumOrderQuantity),
       freeDeliveryEnabled: !!s.free_delivery_enabled,
       freeDeliveryThresholdNgn: toNumber(s.free_delivery_threshold_ngn, 0),
       storeOpen: s.store_open === undefined ? true : !!s.store_open,

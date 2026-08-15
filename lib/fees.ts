@@ -42,6 +42,7 @@ export interface CommerceConfig {
   serviceFeePercentage: number;
   taxPercentage: number;
   minimumOrderNgn: number;
+  minimumOrderQuantity: number; // piece-count minimum, separate from the NGN value minimum
   freeDeliveryEnabled: boolean;
   freeDeliveryThresholdNgn: number; // 0 = disabled
   storeOpen: boolean;
@@ -56,6 +57,7 @@ export const DEFAULT_COMMERCE_CONFIG: CommerceConfig = {
   serviceFeePercentage: SERVICE_FEE_PERCENTAGE,
   taxPercentage: TAX_PERCENTAGE,
   minimumOrderNgn: 1000,
+  minimumOrderQuantity: 5,
   freeDeliveryEnabled: false,
   freeDeliveryThresholdNgn: 0,
   storeOpen: true,

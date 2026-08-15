@@ -13,6 +13,7 @@ interface PaymentMethodsSectionProps {
   onPayWithWallet: () => void;
   onPayWithCard: () => void;
   onPayForMe: () => void;
+  itemsNeededForMinimum?: number;
 }
 
 export function PaymentMethodsSection({
@@ -23,7 +24,10 @@ export function PaymentMethodsSection({
   onPayWithWallet,
   onPayWithCard,
   onPayForMe,
+  itemsNeededForMinimum = 0,
 }: PaymentMethodsSectionProps) {
+  const belowMinimum = itemsNeededForMinimum > 0;
+  const disabled = loading || belowMinimum;
   // Gentle attention pulse on the primary "Pay with Card" button.
   const payPulse = useSharedValue(0);
   const payPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: 1 + payPulse.value * 0.018 }] }));
@@ -36,10 +40,16 @@ export function PaymentMethodsSection({
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Payment Method</Text>
 
+      {belowMinimum && (
+        <Text style={{ fontSize: 13, fontFamily: 'Inter-Medium', color: '#B45309', marginBottom: 12 }}>
+          Add {itemsNeededForMinimum} more item{itemsNeededForMinimum === 1 ? '' : 's'} to your cart to meet our minimum order and continue.
+        </Text>
+      )}
+
       <Pressable
-        style={styles.paymentButton}
+        style={[styles.paymentButton, disabled && { opacity: 0.5 }]}
         onPress={onPayWithWallet}
-        disabled={loading}
+        disabled={disabled}
       >
         <Wallet size={20} color="#FFFFFF" />
         <Text style={styles.paymentButtonText}>
@@ -47,11 +57,11 @@ export function PaymentMethodsSection({
         </Text>
       </Pressable>
 
-      <Animated.View style={payPulseStyle}>
+      <Animated.View style={belowMinimum ? undefined : payPulseStyle}>
         <Pressable
-          style={[styles.paymentButton, styles.paystackButton]}
+          style={[styles.paymentButton, styles.paystackButton, disabled && { opacity: 0.5 }]}
           onPress={onPayWithCard}
-          disabled={loading}
+          disabled={disabled}
         >
           <CreditCard size={20} color="#FFFFFF" />
           <Text style={styles.paymentButtonText}>Pay with Card (Paystack)</Text>
@@ -59,9 +69,9 @@ export function PaymentMethodsSection({
       </Animated.View>
 
       <Pressable
-        style={[styles.paymentButton, styles.payLinkButton]}
+        style={[styles.paymentButton, styles.payLinkButton, disabled && { opacity: 0.5 }]}
         onPress={onPayForMe}
-        disabled={loading || payLinkLoading}
+        disabled={disabled || payLinkLoading}
       >
         {payLinkLoading ? (
           <ActivityIndicator size="small" color="#FFFFFF" />
