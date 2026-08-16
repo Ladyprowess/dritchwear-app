@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Briefcase, CheckCircle, ImagePlus, X } from 'lucide-react-native';
+import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { pickAndUploadImage } from '@/lib/uploadImage';
@@ -59,9 +60,17 @@ export default function CorporateScreen() {
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
+      // Generated client-side so we know the id without needing the insert to
+      // return the row - an anonymous submitter (no account, user_id null)
+      // has no SELECT policy that would let them read their own row back,
+      // since `auth.uid() = user_id` is never true when both sides are null.
+      // Asking Postgres to RETURN the row would fail RLS even though the
+      // insert itself is allowed.
+      const quoteRequestId = Crypto.randomUUID();
+      const { error } = await supabase
         .from('quote_requests')
         .insert({
+          id: quoteRequestId,
           company_name: companyName.trim(),
           contact_name: contactName.trim(),
           email: email.trim(),
@@ -72,15 +81,13 @@ export default function CorporateScreen() {
           logo_url: logoUrl,
           notes: notes.trim() || null,
           user_id: user?.id || null,
-        })
-        .select('id')
-        .single();
+        });
 
       if (error) throw error;
 
       // Best-effort admin notification - the request is already saved either way.
       supabase.functions.invoke('notify-quote-request', {
-        body: { quoteRequestId: data.id },
+        body: { quoteRequestId },
       }).catch((notifyError) => console.error('Quote notification failed:', notifyError));
 
       setSubmitted(true);
