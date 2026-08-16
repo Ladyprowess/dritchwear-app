@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Plus, Save, X, Trash2, ImagePlus, Video as VideoIcon, Star } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
-import { pickAndUploadPortfolioMedia, type UploadedMedia } from '@/lib/uploadMedia';
+import { pickAndUploadPortfolioMedia, pickAndUploadPortfolioThumbnail, type UploadedMedia } from '@/lib/uploadMedia';
 import RichTextEditor from '@/components/RichTextEditor';
 
 const BRAND = '#5A2D82';
@@ -41,6 +41,7 @@ export default function AdminPortfolioScreen() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [media, setMedia] = useState<UploadedMedia[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [uploadingThumbForIndex, setUploadingThumbForIndex] = useState<number | null>(null);
 
   const loadItems = async () => {
     const { data, error } = await supabase
@@ -88,6 +89,18 @@ export default function AdminPortfolioScreen() {
 
   const removeMedia = (index: number) => {
     setMedia((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddThumbnail = async (index: number) => {
+    setUploadingThumbForIndex(index);
+    try {
+      const posterUrl = await pickAndUploadPortfolioThumbnail('portfolio-items');
+      if (posterUrl) {
+        setMedia((prev) => prev.map((m, i) => (i === index ? { ...m, posterUrl } : m)));
+      }
+    } finally {
+      setUploadingThumbForIndex(null);
+    }
   };
 
   const handleSave = async () => {
@@ -248,6 +261,20 @@ export default function AdminPortfolioScreen() {
                   ) : (
                     <View style={[styles.mediaThumb, styles.videoThumb]}><VideoIcon size={18} color="#FFF" /></View>
                   )}
+                  {m.type === 'video' && (
+                    <Pressable
+                      style={styles.mediaThumbBtn}
+                      onPress={() => void handleAddThumbnail(i)}
+                      disabled={uploadingThumbForIndex === i}
+                      hitSlop={4}
+                    >
+                      {uploadingThumbForIndex === i ? (
+                        <ActivityIndicator size="small" color="#FFF" />
+                      ) : (
+                        <ImagePlus size={14} color="#FFF" />
+                      )}
+                    </Pressable>
+                  )}
                   <Pressable style={styles.mediaRemove} onPress={() => removeMedia(i)} hitSlop={6}>
                     <X size={12} color="#FFF" />
                   </Pressable>
@@ -257,7 +284,7 @@ export default function AdminPortfolioScreen() {
                 {uploading ? <ActivityIndicator size="small" color={BRAND} /> : <ImagePlus size={22} color={BRAND} />}
               </Pressable>
             </View>
-            <Text style={styles.hint}>Photos up to 12MB, videos up to 40MB. You can select multiple at once.</Text>
+            <Text style={styles.hint}>Photos up to 12MB, videos up to 40MB. You can select multiple at once. Tap the small photo icon on a video to set its cover thumbnail.</Text>
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -311,5 +338,6 @@ const styles = StyleSheet.create({
   mediaThumbWrap: { position: 'relative' },
   mediaThumb: { width: 72, height: 72, borderRadius: 10, backgroundColor: '#F3F4F6' },
   mediaRemove: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: '#EF4444', alignItems: 'center', justifyContent: 'center' },
+  mediaThumbBtn: { position: 'absolute', bottom: 4, left: 4, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   addMediaBtn: { width: 72, height: 72, borderRadius: 10, borderWidth: 1.5, borderColor: BRAND, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
 });

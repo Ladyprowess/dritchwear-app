@@ -8,7 +8,6 @@ const BUCKET = 'portfolio-media';
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // kept well under the bucket's 100MB cap - base64 read inflates size ~33% and large native reads are slow/memory heavy
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', '3gp', '3gpp', 'webm', 'mkv'];
-const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 
 export interface UploadedMedia {
   url: string;
@@ -89,13 +88,6 @@ async function captureWebVideoFrame(uri: string): Promise<string> {
   });
 }
 
-async function captureNativeVideoFrame(uri: string): Promise<string> {
-  const VideoThumbnails = await import('expo-video-thumbnails');
-  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timed out capturing a video frame')), 8000));
-  const { uri: thumbUri } = await Promise.race([VideoThumbnails.getThumbnailAsync(uri, { time: 300, quality: 0.6 }), timeout]);
-  return await readAssetBase64(thumbUri);
-}
-
 async function uniqueName(ext: string): Promise<string> {
   try {
     const hash = await Crypto.digestStringAsync(
@@ -148,30 +140,15 @@ function getVideoContentType(asset: ImagePicker.ImagePickerAsset): string {
   return 'video/mp4';
 }
 
-function getImageContentType(asset: ImagePicker.ImagePickerAsset): string {
-  const mime = asset.mimeType?.toLowerCase() || '';
-  const ext = extensionFromName(asset.fileName);
-  if (mime.startsWith('image/')) return mime;
-  if (ext === 'png') return 'image/png';
-  if (ext === 'webp') return 'image/webp';
-  if (ext === 'heic') return 'image/heic';
-  if (ext === 'heif') return 'image/heif';
-  return 'image/jpeg';
-}
-
-function extensionForContentType(contentType: string, fallbackName?: string | null): string {
+function extensionForVideoContentType(contentType: string, fallbackName?: string | null): string {
   const ext = extensionFromName(fallbackName);
-  if (VIDEO_EXTENSIONS.includes(ext) || IMAGE_EXTENSIONS.includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+  if (VIDEO_EXTENSIONS.includes(ext)) return ext;
   if (contentType === 'video/quicktime') return 'mov';
   if (contentType === 'video/x-m4v') return 'm4v';
   if (contentType === 'video/3gpp') return '3gp';
   if (contentType === 'video/webm') return 'webm';
   if (contentType === 'video/x-matroska') return 'mkv';
-  if (contentType === 'image/png') return 'png';
-  if (contentType === 'image/webp') return 'webp';
-  if (contentType === 'image/heic') return 'heic';
-  if (contentType === 'image/heif') return 'heif';
-  return contentType.startsWith('video/') ? 'mp4' : 'jpg';
+  return 'mp4';
 }
 
 // Lets an admin pick several photos and/or videos at once and uploads each
@@ -205,7 +182,7 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
 
       if (isVideo) {
         contentType = getVideoContentType(asset);
-        ext = extensionForContentType(contentType, asset.fileName);
+        ext = extensionForVideoContentType(contentType, asset.fileName);
         base64 = await readAssetBase64(asset.uri);
       } else {
         if (Platform.OS === 'web') {
@@ -213,9 +190,9 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
           contentType = 'image/jpeg';
         } else {
           base64 = await readAssetBase64(asset.uri);
-          contentType = getImageContentType(asset);
+          contentType = asset.mimeType || 'image/jpeg';
         }
-        ext = extensionForContentType(contentType, asset.fileName);
+        ext = contentType === 'image/png' ? 'png' : 'jpg';
       }
 
       const filePath = `${pathPrefix}/${await uniqueName(ext)}`;
@@ -229,11 +206,13 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
       if (!pub?.publicUrl) continue;
 
       let posterUrl: string | undefined;
-      if (isVideo) {
+      // Native poster capture is disabled: expo-video-thumbnails isn't compiled
+      // into the current app binary (OTA can't add native modules), and
+      // calling an unlinked native module can crash before JS can catch it.
+      // Re-enable captureNativeVideoFrame() once a fresh native build ships.
+      if (isVideo && Platform.OS === 'web') {
         try {
-          const posterBase64 = Platform.OS === 'web'
-            ? await captureWebVideoFrame(asset.uri)
-            : await captureNativeVideoFrame(asset.uri);
+          const posterBase64 = await captureWebVideoFrame(asset.uri);
           const posterPath = `${pathPrefix}/${await uniqueName('jpg')}`;
           const { data: posterData } = await supabase.storage.from(BUCKET).upload(posterPath, decode(posterBase64), {
             contentType: 'image/jpeg',
@@ -259,4 +238,47 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
   }
 
   return uploaded;
+}
+
+// Lets an admin manually pick a photo to use as a specific video's thumbnail -
+// the safe alternative to auto-generating one, since that requires a native
+// module (expo-video-thumbnails) not yet compiled into the app binary.
+export async function pickAndUploadPortfolioThumbnail(pathPrefix: string): Promise<string | null> {
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.8,
+  });
+  if (result.canceled || !result.assets?.length) return null;
+
+  const asset = result.assets[0];
+  if (asset.fileSize && asset.fileSize > MAX_IMAGE_BYTES) {
+    Alert.alert('Photo too large', `Max ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))}MB.`);
+    return null;
+  }
+
+  try {
+    let base64: string;
+    let contentType: string;
+    if (Platform.OS === 'web') {
+      base64 = await downscaleWebImage(asset.uri, 1600, 0.82);
+      contentType = 'image/jpeg';
+    } else {
+      base64 = await readAssetBase64(asset.uri);
+      contentType = asset.mimeType || 'image/jpeg';
+    }
+    const ext = contentType === 'image/png' ? 'png' : 'jpg';
+
+    const filePath = `${pathPrefix}/${await uniqueName(ext)}`;
+    const { data, error } = await supabase.storage.from(BUCKET).upload(filePath, decode(base64), {
+      contentType,
+      upsert: false,
+    });
+    if (error || !data) throw error || new Error('Upload failed');
+
+    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
+    return pub?.publicUrl || null;
+  } catch (err: any) {
+    Alert.alert('Could not upload thumbnail', err?.message || 'Please try again.');
+    return null;
+  }
 }
