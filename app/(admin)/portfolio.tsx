@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Plus, Save, X, Trash2, ImagePlus, Video as VideoIcon, Star } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { pickAndUploadPortfolioMedia, type UploadedMedia } from '@/lib/uploadMedia';
+import RichTextEditor from '@/components/RichTextEditor';
 
 const BRAND = '#5A2D82';
 
@@ -142,6 +143,8 @@ export default function AdminPortfolioScreen() {
             {item.media_urls[0] && (
               item.media_urls[0].type === 'image' ? (
                 <Image source={{ uri: item.media_urls[0].url }} style={styles.thumb} resizeMode="cover" />
+              ) : item.media_urls[0].posterUrl ? (
+                <Image source={{ uri: item.media_urls[0].posterUrl }} style={styles.thumb} resizeMode="cover" />
               ) : (
                 <View style={[styles.thumb, styles.videoThumb]}>
                   <VideoIcon size={22} color="#FFFFFF" />
@@ -198,15 +201,10 @@ export default function AdminPortfolioScreen() {
             <TextInput style={styles.input} value={form.client_name} onChangeText={(t) => setForm((p) => ({ ...p, client_name: t }))} placeholder="e.g. Paystack" placeholderTextColor="#9CA3AF" />
 
             <Text style={styles.label}>Description</Text>
-            <TextInput
-              style={[styles.input, styles.multiline]}
+            <RichTextEditor
               value={form.description}
-              onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
+              onChange={(html) => setForm((p) => ({ ...p, description: html }))}
               placeholder="e.g. Heavyweight 350gsm fleece hoodies with chest embroidery"
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={3}
-              textAlignVertical="top"
             />
 
             <View style={styles.toggleRow}>
@@ -222,6 +220,8 @@ export default function AdminPortfolioScreen() {
                 <View key={i} style={styles.mediaThumbWrap}>
                   {m.type === 'image' ? (
                     <Image source={{ uri: m.url }} style={styles.mediaThumb} resizeMode="cover" />
+                  ) : m.posterUrl ? (
+                    <Image source={{ uri: m.posterUrl }} style={styles.mediaThumb} resizeMode="cover" />
                   ) : (
                     <View style={[styles.mediaThumb, styles.videoThumb]}><VideoIcon size={18} color="#FFF" /></View>
                   )}

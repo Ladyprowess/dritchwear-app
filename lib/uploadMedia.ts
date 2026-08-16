@@ -10,6 +10,7 @@ const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // kept well under the bucket's 100MB 
 export interface UploadedMedia {
   url: string;
   type: 'image' | 'video';
+  posterUrl?: string;
 }
 
 const decode = (b64: string): Uint8Array => {
@@ -37,6 +38,35 @@ async function downscaleWebImage(uri: string, maxDim: number, quality: number): 
   if (!ctx) throw new Error('Canvas not available');
   ctx.drawImage(img, 0, 0, w, h);
   return canvas.toDataURL('image/jpeg', quality).split(',')[1];
+}
+
+async function captureWebVideoFrame(uri: string): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = uri;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.onloadeddata = () => {
+      video.currentTime = Math.min(0.3, (video.duration || 1) / 2);
+    };
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 480;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas not available')); return; }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+    };
+    video.onerror = () => reject(new Error('Video load failed'));
+  });
+}
+
+async function captureNativeVideoFrame(uri: string): Promise<string> {
+  const VideoThumbnails = await import('expo-video-thumbnails');
+  const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 300, quality: 0.6 });
+  return await readAssetBase64(thumbUri);
 }
 
 async function uniqueName(ext: string): Promise<string> {
@@ -120,7 +150,29 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
       if (error || !data) throw error || new Error('Upload failed');
 
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(data.path);
-      if (pub?.publicUrl) uploaded.push({ url: pub.publicUrl, type: isVideo ? 'video' : 'image' });
+      if (!pub?.publicUrl) continue;
+
+      let posterUrl: string | undefined;
+      if (isVideo) {
+        try {
+          const posterBase64 = Platform.OS === 'web'
+            ? await captureWebVideoFrame(asset.uri)
+            : await captureNativeVideoFrame(asset.uri);
+          const posterPath = `${pathPrefix}/${await uniqueName('jpg')}`;
+          const { data: posterData } = await supabase.storage.from(BUCKET).upload(posterPath, decode(posterBase64), {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+          if (posterData) {
+            const { data: posterPub } = supabase.storage.from(BUCKET).getPublicUrl(posterData.path);
+            posterUrl = posterPub?.publicUrl;
+          }
+        } catch {
+          // Best effort - falls back to the play-icon placeholder if a frame couldn't be captured.
+        }
+      }
+
+      uploaded.push({ url: pub.publicUrl, type: isVideo ? 'video' : 'image', ...(posterUrl ? { posterUrl } : {}) });
     } catch (err: any) {
       failures.push(`${asset.fileName || (isVideo ? 'Video' : 'Image')}: ${err?.message || 'upload failed'}`);
     }

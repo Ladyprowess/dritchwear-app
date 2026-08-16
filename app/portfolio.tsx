@@ -9,6 +9,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, Play, X, Images as ImagesIcon } f
 import { supabase } from '@/lib/supabase';
 import { smartBack } from '@/lib/navigation';
 import type { UploadedMedia } from '@/lib/uploadMedia';
+import RichTextView from '@/components/RichTextView';
 
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
@@ -97,7 +98,7 @@ export default function PortfolioScreen() {
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
         {FILTERS.map((f) => (
           <Pressable
             key={f.value}
@@ -130,6 +131,13 @@ export default function PortfolioScreen() {
               <View style={[styles.cardThumbWrap, { width: cardWidth, height: cardWidth }]}>
                 {item.media_urls[0]?.type === 'image' ? (
                   <Image source={{ uri: item.media_urls[0].url }} style={styles.cardThumb} resizeMode="cover" />
+                ) : item.media_urls[0]?.posterUrl ? (
+                  <View style={styles.cardThumb}>
+                    <Image source={{ uri: item.media_urls[0].posterUrl }} style={styles.cardThumb} resizeMode="cover" />
+                    <View style={styles.videoPlayBadge}>
+                      <Play size={16} color="#FFFFFF" fill="#FFFFFF" />
+                    </View>
+                  </View>
                 ) : (
                   <View style={[styles.cardThumb, styles.videoPlaceholder]}>
                     <Play size={28} color="#FFFFFF" fill="#FFFFFF" />
@@ -181,7 +189,9 @@ export default function PortfolioScreen() {
             <View style={styles.lightboxInfo}>
               <Text style={styles.lightboxTitle}>{lightboxItem.title}</Text>
               {lightboxItem.client_name && <Text style={styles.lightboxClient}>{lightboxItem.client_name}</Text>}
-              {lightboxItem.description && <Text style={styles.lightboxDesc}>{lightboxItem.description}</Text>}
+              {lightboxItem.description && (
+                <RichTextView html={lightboxItem.description} color="#D1D5DB" fontSize={13} textAlign="center" />
+              )}
               {lightboxItem.media_urls.length > 1 && (
                 <Text style={styles.lightboxCount}>{mediaIndex + 1} / {lightboxItem.media_urls.length}</Text>
               )}
@@ -207,7 +217,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937' },
   headerSub: { fontSize: 12.5, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 2 },
 
-  filterRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  filterScroll: { flexGrow: 0, flexShrink: 0 },
+  filterRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8, alignItems: 'flex-start' },
   filterChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
   filterChipActive: { backgroundColor: BRAND.purple, borderColor: BRAND.purple },
   filterChipText: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#4B5563' },
@@ -218,6 +229,11 @@ const styles = StyleSheet.create({
   cardThumbWrap: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#F3F4F6' },
   cardThumb: { width: '100%', height: '100%' },
   videoPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#374151' },
+  videoPlayBadge: {
+    position: 'absolute', top: '50%', left: '50%', marginTop: -18, marginLeft: -18,
+    width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   countBadge: { position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   countBadgeText: { color: '#FFF', fontSize: 11, fontFamily: 'Inter-Bold' },
   cardTitle: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#1F2937', marginTop: 8, lineHeight: 18 },
