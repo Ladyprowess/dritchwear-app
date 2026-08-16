@@ -1,0 +1,124 @@
+diff --git a/node_modules/expo-image-picker/android/.gradle/9.2.0/checksums/checksums.lock b/node_modules/expo-image-picker/android/.gradle/9.2.0/checksums/checksums.lock
+new file mode 100644
+index 0000000..99cf471
+Binary files /dev/null and b/node_modules/expo-image-picker/android/.gradle/9.2.0/checksums/checksums.lock differ
+diff --git a/node_modules/expo-image-picker/android/.gradle/9.2.0/fileChanges/last-build.bin b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileChanges/last-build.bin
+new file mode 100644
+index 0000000..f76dd23
+Binary files /dev/null and b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileChanges/last-build.bin differ
+diff --git a/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.bin b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.bin
+new file mode 100644
+index 0000000..8304c4d
+Binary files /dev/null and b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.bin differ
+diff --git a/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.lock b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.lock
+new file mode 100644
+index 0000000..b8bc0e0
+Binary files /dev/null and b/node_modules/expo-image-picker/android/.gradle/9.2.0/fileHashes/fileHashes.lock differ
+diff --git a/node_modules/expo-image-picker/android/.gradle/9.2.0/gc.properties b/node_modules/expo-image-picker/android/.gradle/9.2.0/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock b/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock
+new file mode 100644
+index 0000000..0398532
+Binary files /dev/null and b/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock differ
+diff --git a/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/cache.properties b/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/cache.properties
+new file mode 100644
+index 0000000..415006c
+--- /dev/null
++++ b/node_modules/expo-image-picker/android/.gradle/buildOutputCleanup/cache.properties
+@@ -0,0 +1,2 @@
++#Sun Jul 26 00:30:25 WAT 2026
++gradle.version=9.2.0
+diff --git a/node_modules/expo-image-picker/android/.gradle/vcs-1/gc.properties b/node_modules/expo-image-picker/android/.gradle/vcs-1/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-image-picker/build/ExponentImagePicker.web.js b/node_modules/expo-image-picker/build/ExponentImagePicker.web.js
+index 0aa82e1..0c9f765 100644
+--- a/node_modules/expo-image-picker/build/ExponentImagePicker.web.js
++++ b/node_modules/expo-image-picker/build/ExponentImagePicker.web.js
+@@ -113,31 +113,81 @@ function openFileBrowserAsync({ mediaTypes, capture = false, allowsMultipleSelec
+ async function getImageMetadata(blobUrl) {
+     return new Promise((resolve) => {
+         const image = new Image();
++        let settled = false;
++        const timer = setTimeout(() => {
++            if (settled) return;
++            settled = true;
++            resolve({ width: 0, height: 0 });
++        }, 8000);
+         image.onload = () => {
++            if (settled) return;
++            settled = true;
++            clearTimeout(timer);
+             resolve({
+                 width: image.naturalWidth ?? image.width,
+                 height: image.naturalHeight ?? image.height,
+             });
+         };
+-        image.onerror = () => resolve({ width: 0, height: 0 });
++        image.onerror = () => {
++            if (settled) return;
++            settled = true;
++            clearTimeout(timer);
++            resolve({ width: 0, height: 0 });
++        };
+         image.src = blobUrl;
+     });
+ }
+ /**
+  * Gets metadata for a video file using a blob URL
++ *
++ * Patched via patch-package: the element is attached to the document (hidden)
++ * because several browsers never fire loadedmetadata for detached <video>
++ * elements, especially when several are decoding concurrently (multi-select).
++ * A timeout guarantees this always settles instead of hanging the whole
++ * launchImageLibraryAsync() call forever.
+  */
+ async function getVideoMetadata(blobUrl) {
+     return new Promise((resolve) => {
+         const video = document.createElement('video');
+         video.preload = 'metadata';
++        video.muted = true;
++        video.style.position = 'fixed';
++        video.style.width = '1px';
++        video.style.height = '1px';
++        video.style.opacity = '0';
++        video.style.pointerEvents = 'none';
++        let settled = false;
++        const cleanup = () => {
++            video.onloadedmetadata = null;
++            video.onerror = null;
++            video.remove();
++        };
++        const timer = setTimeout(() => {
++            if (settled) return;
++            settled = true;
++            cleanup();
++            resolve({ width: 0, height: 0, duration: 0 });
++        }, 8000);
+         video.onloadedmetadata = () => {
+-            resolve({
++            if (settled) return;
++            settled = true;
++            clearTimeout(timer);
++            const result = {
+                 width: video.videoWidth,
+                 height: video.videoHeight,
+                 duration: video.duration,
+-            });
++            };
++            cleanup();
++            resolve(result);
++        };
++        video.onerror = () => {
++            if (settled) return;
++            settled = true;
++            clearTimeout(timer);
++            cleanup();
++            resolve({ width: 0, height: 0, duration: 0 });
+         };
+-        video.onerror = () => resolve({ width: 0, height: 0, duration: 0 });
++        document.body.appendChild(video);
+         video.src = blobUrl;
+     });
+ }

@@ -1,11 +1,14 @@
 import { Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Crypto from 'expo-crypto';
+import { toByteArray } from 'base64-js';
 import { supabase } from '@/lib/supabase';
 
 const BUCKET = 'portfolio-media';
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 40 * 1024 * 1024; // kept well under the bucket's 100MB cap - base64 read inflates size ~33% and large native reads are slow/memory heavy
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'm4v', '3gp', '3gpp', 'webm', 'mkv'];
+const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'];
 
 export interface UploadedMedia {
   url: string;
@@ -13,12 +16,7 @@ export interface UploadedMedia {
   posterUrl?: string;
 }
 
-const decode = (b64: string): Uint8Array => {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-};
+const decode = (b64: string): Uint8Array => toByteArray(b64);
 
 async function downscaleWebImage(uri: string, maxDim: number, quality: number): Promise<string> {
   const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -43,11 +41,35 @@ async function downscaleWebImage(uri: string, maxDim: number, quality: number): 
 async function captureWebVideoFrame(uri: string): Promise<string> {
   return await new Promise<string>((resolve, reject) => {
     const video = document.createElement('video');
-    video.src = uri;
+    // Some browsers only reliably fire loadedmetadata/seeked for elements
+    // attached to the document, so this stays in the DOM (hidden) instead
+    // of floating detached, and is always cleaned up on settle.
+    video.style.position = 'fixed';
+    video.style.width = '1px';
+    video.style.height = '1px';
+    video.style.opacity = '0';
+    video.style.pointerEvents = 'none';
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
-    video.onloadeddata = () => {
+
+    let settled = false;
+    const cleanup = () => {
+      video.onloadedmetadata = null;
+      video.onseeked = null;
+      video.onerror = null;
+      video.remove();
+    };
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn();
+      cleanup();
+    };
+    const timer = setTimeout(() => settle(() => reject(new Error('Timed out capturing a video frame'))), 8000);
+
+    video.onloadedmetadata = () => {
       video.currentTime = Math.min(0.3, (video.duration || 1) / 2);
     };
     video.onseeked = () => {
@@ -55,17 +77,22 @@ async function captureWebVideoFrame(uri: string): Promise<string> {
       canvas.width = video.videoWidth || 480;
       canvas.height = video.videoHeight || 480;
       const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('Canvas not available')); return; }
+      if (!ctx) { settle(() => reject(new Error('Canvas not available'))); return; }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.7).split(',')[1]);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      settle(() => resolve(dataUrl.split(',')[1]));
     };
-    video.onerror = () => reject(new Error('Video load failed'));
+    video.onerror = () => settle(() => reject(new Error('Video load failed')));
+
+    document.body.appendChild(video);
+    video.src = uri;
   });
 }
 
 async function captureNativeVideoFrame(uri: string): Promise<string> {
   const VideoThumbnails = await import('expo-video-thumbnails');
-  const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 300, quality: 0.6 });
+  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Timed out capturing a video frame')), 8000));
+  const { uri: thumbUri } = await Promise.race([VideoThumbnails.getThumbnailAsync(uri, { time: 300, quality: 0.6 }), timeout]);
   return await readAssetBase64(thumbUri);
 }
 
@@ -98,6 +125,55 @@ async function readAssetBase64(uri: string): Promise<string> {
   });
 }
 
+function extensionFromName(name?: string | null): string {
+  const ext = name?.split('.').pop()?.toLowerCase();
+  return ext && ext !== name?.toLowerCase() ? ext : '';
+}
+
+function isVideoAsset(asset: ImagePicker.ImagePickerAsset): boolean {
+  const mime = asset.mimeType?.toLowerCase() || '';
+  const ext = extensionFromName(asset.fileName);
+  return asset.type === 'video' || mime.startsWith('video/') || VIDEO_EXTENSIONS.includes(ext);
+}
+
+function getVideoContentType(asset: ImagePicker.ImagePickerAsset): string {
+  const mime = asset.mimeType?.toLowerCase() || '';
+  const ext = extensionFromName(asset.fileName);
+  if (mime.startsWith('video/')) return mime;
+  if (ext === 'mov') return 'video/quicktime';
+  if (ext === 'm4v') return 'video/x-m4v';
+  if (ext === '3gp' || ext === '3gpp') return 'video/3gpp';
+  if (ext === 'webm') return 'video/webm';
+  if (ext === 'mkv') return 'video/x-matroska';
+  return 'video/mp4';
+}
+
+function getImageContentType(asset: ImagePicker.ImagePickerAsset): string {
+  const mime = asset.mimeType?.toLowerCase() || '';
+  const ext = extensionFromName(asset.fileName);
+  if (mime.startsWith('image/')) return mime;
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'heic') return 'image/heic';
+  if (ext === 'heif') return 'image/heif';
+  return 'image/jpeg';
+}
+
+function extensionForContentType(contentType: string, fallbackName?: string | null): string {
+  const ext = extensionFromName(fallbackName);
+  if (VIDEO_EXTENSIONS.includes(ext) || IMAGE_EXTENSIONS.includes(ext)) return ext === 'jpeg' ? 'jpg' : ext;
+  if (contentType === 'video/quicktime') return 'mov';
+  if (contentType === 'video/x-m4v') return 'm4v';
+  if (contentType === 'video/3gpp') return '3gp';
+  if (contentType === 'video/webm') return 'webm';
+  if (contentType === 'video/x-matroska') return 'mkv';
+  if (contentType === 'image/png') return 'png';
+  if (contentType === 'image/webp') return 'webp';
+  if (contentType === 'image/heic') return 'heic';
+  if (contentType === 'image/heif') return 'heif';
+  return contentType.startsWith('video/') ? 'mp4' : 'jpg';
+}
+
 // Lets an admin pick several photos and/or videos at once and uploads each
 // to the public portfolio-media bucket. Returns whatever succeeded - a
 // failure on one file doesn't lose the others, matching the same
@@ -114,7 +190,7 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
   const failures: string[] = [];
 
   for (const asset of result.assets) {
-    const isVideo = asset.type === 'video';
+    const isVideo = isVideoAsset(asset);
     const maxBytes = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
 
     if (asset.fileSize && asset.fileSize > maxBytes) {
@@ -128,8 +204,8 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
       let ext: string;
 
       if (isVideo) {
-        contentType = asset.mimeType || 'video/mp4';
-        ext = contentType.includes('quicktime') ? 'mov' : 'mp4';
+        contentType = getVideoContentType(asset);
+        ext = extensionForContentType(contentType, asset.fileName);
         base64 = await readAssetBase64(asset.uri);
       } else {
         if (Platform.OS === 'web') {
@@ -137,9 +213,9 @@ export async function pickAndUploadPortfolioMedia(pathPrefix: string): Promise<U
           contentType = 'image/jpeg';
         } else {
           base64 = await readAssetBase64(asset.uri);
-          contentType = asset.mimeType || 'image/jpeg';
+          contentType = getImageContentType(asset);
         }
-        ext = contentType === 'image/png' ? 'png' : 'jpg';
+        ext = extensionForContentType(contentType, asset.fileName);
       }
 
       const filePath = `${pathPrefix}/${await uniqueName(ext)}`;

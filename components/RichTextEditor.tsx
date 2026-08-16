@@ -1,7 +1,5 @@
 import React, { useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
-
-const BRAND = '#5A2D82';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 interface RichTextEditorProps {
   value: string;
@@ -71,28 +69,44 @@ function WebRichTextEditor({ value, onChange, placeholder }: RichTextEditorProps
   );
 }
 
-// Native: react-native-pell-rich-editor (WebView-backed).
-function NativeRichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
-  const { RichEditor, RichToolbar, actions } = require('react-native-pell-rich-editor');
-  const richText = useRef<any>(null);
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n+$/, '');
+}
+
+function plainTextToHtml(text: string): string {
+  return text.split('\n').map((line) => `<p>${line ? escapeHtml(line) : '<br/>'}</p>`).join('');
+}
+
+// Native: a plain multiline input. A WebView-based rich editor previously
+// lived here but crashed the app on Android under React Native's New
+// Architecture, so formatting (bold/italic/lists) is web-admin-only for now -
+// native just edits/stores the same HTML as plain text (newlines preserved).
+function NativeRichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   return (
-    <View style={styles.nativeWrap}>
-      <RichToolbar
-        editor={richText}
-        selectedIconTint={BRAND}
-        iconTint="#6B7280"
-        actions={[actions.setBold, actions.setItalic, actions.insertBulletsList]}
-        style={styles.nativeToolbar}
-      />
-      <RichEditor
-        ref={richText}
-        initialContentHTML={value}
-        onChange={onChange}
+    <View>
+      <TextInput
+        style={styles.nativeInput}
+        value={htmlToPlainText(value)}
+        onChangeText={(t) => onChange(plainTextToHtml(t))}
         placeholder={placeholder}
-        editorStyle={{ contentCSSText: 'font-size: 15px; font-family: sans-serif; color: #17131C; padding: 4px 8px;' }}
-        style={styles.nativeEditor}
+        placeholderTextColor="#9CA3AF"
+        multiline
+        numberOfLines={4}
+        textAlignVertical="top"
       />
+      <Text style={styles.nativeHint}>Bold, italics, and bullet lists are available when editing from the web admin.</Text>
     </View>
   );
 }
@@ -104,7 +118,10 @@ export default function RichTextEditor(props: RichTextEditorProps) {
 const styles = StyleSheet.create({
   webWrap: { gap: 8 },
   toolbar: { flexDirection: 'row' },
-  nativeWrap: { borderWidth: 1, borderColor: '#D8D2DC', borderRadius: 9, overflow: 'hidden' },
-  nativeToolbar: { backgroundColor: '#F9FAFB', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  nativeEditor: { minHeight: 100, backgroundColor: '#FFFFFF' },
+  nativeInput: {
+    minHeight: 90, borderWidth: 1, borderColor: '#D8D2DC', borderRadius: 9,
+    paddingHorizontal: 14, paddingVertical: 10, fontFamily: 'Inter-Regular', fontSize: 15,
+    color: '#17131C', backgroundColor: '#FFFFFF',
+  },
+  nativeHint: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 6 },
 });

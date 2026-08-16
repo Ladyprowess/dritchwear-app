@@ -40,6 +40,7 @@ export default function AdminPortfolioScreen() {
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [media, setMedia] = useState<UploadedMedia[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const loadItems = async () => {
     const { data, error } = await supabase
@@ -54,16 +55,35 @@ export default function AdminPortfolioScreen() {
   useEffect(() => { void loadItems(); }, []);
 
   const openAdd = () => {
+    setEditingId(null);
     setForm(EMPTY_FORM);
     setMedia([]);
     setShowModal(true);
   };
 
+  const openEdit = (item: PortfolioItem) => {
+    setEditingId(item.id);
+    setForm({
+      title: item.title,
+      category: item.category,
+      client_name: item.client_name || '',
+      description: item.description || '',
+      isFeatured: item.is_featured,
+    });
+    setMedia(item.media_urls);
+    setShowModal(true);
+  };
+
   const handleAddMedia = async () => {
     setUploading(true);
-    const uploaded = await pickAndUploadPortfolioMedia('portfolio-items');
-    setUploading(false);
-    if (uploaded.length > 0) setMedia((prev) => [...prev, ...uploaded]);
+    try {
+      const uploaded = await pickAndUploadPortfolioMedia('portfolio-items');
+      if (uploaded.length > 0) setMedia((prev) => [...prev, ...uploaded]);
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.message || 'Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const removeMedia = (index: number) => {
@@ -82,14 +102,17 @@ export default function AdminPortfolioScreen() {
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('portfolio_items').insert({
+      const payload = {
         title: form.title.trim(),
         category: form.category,
         client_name: form.client_name.trim() || null,
         description: form.description.trim() || null,
         media_urls: media,
         is_featured: form.isFeatured,
-      });
+      };
+      const { error } = editingId
+        ? await supabase.from('portfolio_items').update(payload).eq('id', editingId)
+        : await supabase.from('portfolio_items').insert(payload);
       if (error) throw error;
 
       setShowModal(false);
@@ -139,7 +162,7 @@ export default function AdminPortfolioScreen() {
           <Text style={styles.emptyText}>No portfolio items yet. Tap + to add your first project.</Text>
         )}
         {items.map((item) => (
-          <View key={item.id} style={styles.card}>
+          <Pressable key={item.id} style={styles.card} onPress={() => openEdit(item)}>
             {item.media_urls[0] && (
               item.media_urls[0].type === 'image' ? (
                 <Image source={{ uri: item.media_urls[0].url }} style={styles.thumb} resizeMode="cover" />
@@ -162,17 +185,17 @@ export default function AdminPortfolioScreen() {
               </Text>
               <Text style={styles.cardMeta}>{item.media_urls.length} file{item.media_urls.length === 1 ? '' : 's'}</Text>
             </View>
-            <Pressable style={styles.deleteBtn} onPress={() => handleDelete(item)}>
+            <Pressable style={styles.deleteBtn} onPress={() => handleDelete(item)} hitSlop={4}>
               <Trash2 size={16} color="#FFFFFF" />
             </Pressable>
-          </View>
+          </Pressable>
         ))}
       </ScrollView>
 
       <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowModal(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Project</Text>
+            <Text style={styles.modalTitle}>{editingId ? 'Edit Project' : 'Add Project'}</Text>
             <View style={styles.modalActions}>
               <Pressable style={styles.cancelBtn} onPress={() => setShowModal(false)}><X size={20} color="#6B7280" /></Pressable>
               <Pressable style={[styles.modalSaveBtn, saving && { opacity: 0.6 }]} onPress={() => void handleSave()} disabled={saving}>
