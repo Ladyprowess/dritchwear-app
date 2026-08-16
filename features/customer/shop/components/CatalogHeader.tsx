@@ -47,8 +47,8 @@ export function CatalogHeader({
       <View style={styles.catalogTop}>
         <HeroBanner
           onFilterPress={onOpenFilterModal}
-          onCustomOrderPress={() => router.push('/(customer)/custom-order')}
-          onStyleMePress={() => router.push('/(customer)/looks')}
+          onCustomOrderPress={() => router.push('/corporate' as any)}
+          onStyleMePress={() => router.push('/portfolio' as any)}
         />
 
         <SearchBar

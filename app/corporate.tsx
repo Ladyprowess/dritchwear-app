@@ -4,11 +4,13 @@ import {
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Briefcase, CheckCircle, ImagePlus, X } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { ArrowLeft, Briefcase, CheckCircle, ImagePlus, X } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { pickAndUploadImage } from '@/lib/uploadImage';
+import { smartBack } from '@/lib/navigation';
 
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
@@ -23,6 +25,7 @@ const CATALOG_ITEMS = [
 
 export default function CorporateScreen() {
   const { user } = useAuth();
+  const router = useRouter();
 
   const [companyName, setCompanyName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -106,6 +109,9 @@ export default function CorporateScreen() {
         <Text style={styles.successSub}>
           Thanks for reaching out. Our team will review your request and follow up by email within 1-2 business days with pricing and next steps.
         </Text>
+        <Pressable style={styles.backToShopBtn} onPress={() => smartBack(router, '/(customer)/shop')}>
+          <Text style={styles.backToShopBtnText}>Back to Shop</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -114,6 +120,14 @@ export default function CorporateScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => smartBack(router, '/(customer)/shop')}
+            accessibilityRole="button"
+            accessibilityLabel="Back to shop"
+          >
+            <ArrowLeft size={20} color={BRAND.purple} />
+          </Pressable>
           <View style={styles.headerIcon}>
             <Briefcase size={22} color={BRAND.purple} />
           </View>
@@ -136,6 +150,10 @@ export default function CorporateScreen() {
               </View>
             ))}
           </View>
+
+          <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
+            <Text style={styles.portfolioLinkText}>See Examples of Our Past Work →</Text>
+          </Pressable>
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Request a Quote</Text>
@@ -217,12 +235,15 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, backgroundColor: '#F9FAFB' },
   successTitle: { fontSize: 22, fontFamily: 'Inter-Bold', color: '#10B981', marginTop: 16, marginBottom: 8 },
   successSub: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#6B7280', textAlign: 'center', lineHeight: 22 },
+  backToShopBtn: { marginTop: 24, backgroundColor: BRAND.purple, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28 },
+  backToShopBtnText: { color: '#FFF', fontSize: 14, fontFamily: 'Inter-Bold' },
 
   header: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
   },
+  backButton: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
   headerIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#EDE9F6', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937' },
   headerSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 2 },
@@ -230,7 +251,9 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 48 },
   intro: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 21, marginBottom: 20 },
 
-  catalogRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+  catalogRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  portfolioLink: { alignItems: 'center', paddingVertical: 10, marginBottom: 24 },
+  portfolioLinkText: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
   catalogCard: {
     width: '47%', backgroundColor: '#FFF', borderRadius: 14, padding: 14,
     borderWidth: 1, borderColor: '#EDE9F6',

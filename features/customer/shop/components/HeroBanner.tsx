@@ -62,7 +62,7 @@ export function HeroBanner({ onFilterPress, onCustomOrderPress, onStyleMePress }
               <Text style={styles.heroPrimaryBtnText}>Custom Merch</Text>
             </Pressable>
             <Pressable style={styles.heroSecondaryBtn} onPress={onStyleMePress}>
-              <Text style={styles.heroSecondaryBtnText}>Style Me</Text>
+              <Text style={styles.heroSecondaryBtnText}>Our Work</Text>
             </Pressable>
           </View>
         </View>

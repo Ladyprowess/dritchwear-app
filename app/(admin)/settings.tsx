@@ -17,6 +17,7 @@ import {
   MessageCircle,
   ShoppingCart,
   Image as ImageIcon,
+  Images,
 } from 'lucide-react-native';
 
 const POST_LOGOUT_REDIRECT_KEY = 'post_logout_redirect_to_welcome';
@@ -132,6 +133,13 @@ export default function AdminSettingsScreen() {
       subtitle: 'Delivery fees, free delivery, taxes & store status',
       color: '#5A2D82',
       onPress: () => router.push('/(admin)/store-settings'),
+    },
+    {
+      icon: Images,
+      title: 'Portfolio / Past Work',
+      subtitle: 'Photos & videos shown on the public portfolio page',
+      color: '#0EA5E9',
+      onPress: () => router.push('/(admin)/portfolio' as any),
     },
   ];
 

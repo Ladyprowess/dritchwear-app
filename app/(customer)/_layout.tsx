@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Redirect, Tabs, useRouter, usePathname } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { ShoppingBag, User, Bell, Search, ShoppingCart, Menu, X, Gift, Scissors, Heart, Sparkles, Shirt } from 'lucide-react-native';
+import { ShoppingBag, User, Bell, Search, ShoppingCart, Menu, X, Gift, Scissors, Heart, Sparkles, Shirt, Briefcase } from 'lucide-react-native';
 import { useCart } from '@/contexts/CartContext';
 import {
   View,
@@ -11,13 +11,16 @@ import {
   Pressable,
   AppState,
   Animated,
+  Easing,
   Platform,
   useWindowDimensions,
+  AccessibilityInfo,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import NotificationOptInPrompt from '@/components/NotificationOptInPrompt';
 import LiveChatBubble from '@/components/LiveChatBubble';
+import CorporateAnnouncementModal from '@/components/CorporateAnnouncementModal';
 
 
 const BRAND   = { purple: '#5A2D82', gold: '#FDB813' };
@@ -36,6 +39,83 @@ const TABS: TabItem[] = [
   { name: 'notifications', label: 'Notifications',  icon: (c, s) => <Bell size={s} color={c} /> },
   { name: 'profile',       label: 'Profile',        icon: (c, s) => <User size={s} color={c} /> },
 ];
+
+// ---------------------------------------------------------------------------
+// Scrolling marquee banner - repeat enough copies to cover the viewport, then
+// translate left by exactly one text segment so the loop point stays invisible.
+// ---------------------------------------------------------------------------
+function MarqueeBanner({ text, onPress }: { text: string; onPress: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const { width } = useWindowDimensions();
+  const [textWidth, setTextWidth] = useState(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const GAP = 48;
+  const distance = textWidth + GAP;
+  const repeatCount = useMemo(() => {
+    if (!distance) return 2;
+    return Math.max(2, Math.ceil(width / distance) + 2);
+  }, [distance, width]);
+
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!distance || reduceMotion) {
+      translateX.setValue(0);
+      return;
+    }
+    translateX.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(translateX, {
+        toValue: -distance,
+        duration: distance * 14, // ~14ms per px - slow, easy-to-read scroll
+        useNativeDriver: true,
+        easing: Easing.linear,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [distance, reduceMotion, translateX]);
+
+  return (
+    <Pressable
+      style={styles.corporateBanner}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={text}
+    >
+      <View style={styles.marqueeClip}>
+        <Animated.View style={{ flexDirection: 'row', transform: [{ translateX }] }}>
+          <Text
+            onLayout={(e) => setTextWidth(e.nativeEvent.layout.width)}
+            style={[styles.corporateBannerText, { marginRight: GAP }]}
+            numberOfLines={1}
+          >
+            {text}
+          </Text>
+          {Array.from({ length: repeatCount - 1 }).map((_, index) => (
+            <Text
+              key={index}
+              style={[styles.corporateBannerText, { marginRight: GAP }]}
+              numberOfLines={1}
+            >
+              {text}
+            </Text>
+          ))}
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Persistent top header (hamburger + title + quick badges)
@@ -68,7 +148,8 @@ function AppHeader({
   };
 
   return (
-    <View style={[styles.appHeader, isDesktop && styles.appHeaderDesktop, { paddingTop: isDesktop ? 8 : insets.top + 8 }]}> 
+    <>
+    <View style={[styles.appHeader, isDesktop && styles.appHeaderDesktop, { paddingTop: isDesktop ? 8 : insets.top + 8 }]}>
       {/* Hamburger */}
       {!isDesktop && (
         <Pressable accessibilityLabel="Open navigation" style={styles.headerMenuBtn} onPress={onMenuPress} hitSlop={8}>
@@ -125,6 +206,12 @@ function AppHeader({
         </Pressable>
       </View>
     </View>
+
+    <MarqueeBanner
+      text="🏢 Need bulk merch for your company or event? Click here for prices"
+      onPress={() => router.push('/corporate' as any)}
+    />
+    </>
   );
 }
 
@@ -251,9 +338,12 @@ function SideDrawer({
             <Shirt size={18} color={BRAND.purple} />
             <Text style={styles.drawerServiceText}>My Wardrobe</Text>
           </Pressable>
-          <Pressable style={styles.drawerServiceItem} onPress={() => navigate('custom-order')}>
-            <Scissors size={18} color={BRAND.purple} />
-            <Text style={styles.drawerServiceText}>Custom order</Text>
+          <Pressable
+            style={styles.drawerServiceItem}
+            onPress={() => { onClose(); setTimeout(() => router.push('/corporate' as any), 160); }}
+          >
+            <Briefcase size={18} color={BRAND.purple} />
+            <Text style={styles.drawerServiceText}>Bulk / Corporate Orders</Text>
           </Pressable>
           <Pressable style={styles.drawerServiceItem} onPress={() => navigate('gift-cards')}>
             <Gift size={18} color={BRAND.purple} />
@@ -476,6 +566,7 @@ export default function CustomerLayout() {
       )}
 
       <NotificationOptInPrompt userId={user?.id} />
+      <CorporateAnnouncementModal />
     </View>
   );
 }
@@ -496,6 +587,23 @@ const styles = StyleSheet.create({
     minHeight: 72,
     paddingHorizontal: 32,
     paddingBottom: 8,
+  },
+  corporateBanner: {
+    backgroundColor: '#F3EFF7',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E3EB',
+  },
+  marqueeClip: {
+    overflow: 'hidden',
+    width: '100%',
+  },
+  corporateBannerText: {
+    fontSize: 12.5,
+    fontFamily: 'Inter-SemiBold',
+    color: BRAND.purple,
+    flexShrink: 0,
   },
   headerMenuBtn: {
     width: 38,

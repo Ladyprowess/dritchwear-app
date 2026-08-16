@@ -357,7 +357,8 @@ function RootLayoutContent() {
         const isPublicStandaloneRoute =
           currentPath === '/pay' || currentPath.startsWith('/pay/') ||
           webPath === '/pay' || webPath.startsWith('/pay/') ||
-          currentPath === '/corporate' || webPath === '/corporate';
+          currentPath === '/corporate' || webPath === '/corporate' ||
+          currentPath === '/portfolio' || webPath === '/portfolio';
 
         // Keep standalone public routes mounted instead of forcing them through
         // the app home redirect logic during global auth boot.
@@ -430,6 +431,7 @@ function RootLayoutContent() {
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
         <Stack.Screen name="pay/[token]" options={{ headerShown: false }} />
         <Stack.Screen name="corporate" options={{ headerShown: false }} />
+        <Stack.Screen name="portfolio" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
 

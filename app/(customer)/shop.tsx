@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Platform, useWindowDimensions } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import ProductModal from '@/features/customer/shared/productModal/components/ProductModal';
 import EdgeToEdgeWrapper from '@/components/EdgeToEdgeWrapper';
 import ResponsiveGrid from '@/components/ResponsiveGrid';
@@ -16,12 +16,10 @@ import { categories } from '@/features/customer/shop/constants';
 import { useShopFilters } from '@/features/customer/shop/hooks/useShopFilters';
 import { useShopProducts } from '@/features/customer/shop/hooks/useShopProducts';
 import { useWishlist } from '@/features/customer/shop/hooks/useWishlist';
-import { useSpecialOffer } from '@/features/customer/shop/hooks/useSpecialOffer';
 import { useRecentlyViewed } from '@/features/customer/shop/hooks/useRecentlyViewed';
 import { ProductCard } from '@/features/customer/shop/components/ProductCard';
 import { CatalogHeader } from '@/features/customer/shop/components/CatalogHeader';
 import { CatalogFooter } from '@/features/customer/shop/components/CatalogFooter';
-import { OfferModal } from '@/features/customer/shop/components/OfferModal';
 import { FilterModal } from '@/features/customer/shop/components/FilterModal';
 import { LoadingOrEmptyState } from '@/features/customer/shop/components/LoadingOrEmptyState';
 
@@ -29,7 +27,6 @@ export default function ShopScreen() {
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
   const { profile, user } = useAuth();
-  const router = useRouter();
   const { insets } = useEdgeToEdge();
   const posthog = usePostHog();
 
@@ -58,7 +55,6 @@ export default function ShopScreen() {
     maxPrice: filters.maxPrice,
   }, profile?.preferred_currency || 'NGN');
   const { wishlistIds, toggleWishlist } = useWishlist(user?.id, posthog);
-  const { activeOffer, showOffer, dismissOffer } = useSpecialOffer();
   const { recentIds, recordView } = useRecentlyViewed(user?.id);
 
   // Viewer's wardrobe-tier rank, to gate member-only products.
@@ -180,13 +176,6 @@ export default function ShopScreen() {
             />
           )
         }
-      />
-
-      <OfferModal
-        activeOffer={activeOffer}
-        showOffer={showOffer}
-        isDesktop={isDesktop}
-        onDismiss={dismissOffer}
       />
 
       <FilterModal
