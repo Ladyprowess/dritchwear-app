@@ -141,6 +141,13 @@ export default function AdminSettingsScreen() {
       color: '#0EA5E9',
       onPress: () => router.push('/(admin)/portfolio' as any),
     },
+    {
+      icon: Tag,
+      title: 'B2B Pricing',
+      subtitle: 'Price tiers shown on the public B2B pricing page',
+      color: '#F59E0B',
+      onPress: () => router.push('/(admin)/b2b-pricing' as any),
+    },
   ];
 
   const renderMenuItem = (item: any, index: number) => (

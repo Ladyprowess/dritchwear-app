@@ -155,6 +155,10 @@ export default function CorporateScreen() {
             <Text style={styles.portfolioLinkText}>See Examples of Our Past Work →</Text>
           </Pressable>
 
+          <Pressable style={styles.portfolioLink} onPress={() => router.push('/b2b-pricing' as any)}>
+            <Text style={styles.portfolioLinkText}>See Pricing →</Text>
+          </Pressable>
+
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Request a Quote</Text>
 

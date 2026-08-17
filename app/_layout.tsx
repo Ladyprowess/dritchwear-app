@@ -358,7 +358,8 @@ function RootLayoutContent() {
           currentPath === '/pay' || currentPath.startsWith('/pay/') ||
           webPath === '/pay' || webPath.startsWith('/pay/') ||
           currentPath === '/corporate' || webPath === '/corporate' ||
-          currentPath === '/portfolio' || webPath === '/portfolio';
+          currentPath === '/portfolio' || webPath === '/portfolio' ||
+          currentPath === '/b2b-pricing' || webPath === '/b2b-pricing';
 
         // Keep standalone public routes mounted instead of forcing them through
         // the app home redirect logic during global auth boot.
@@ -432,6 +433,7 @@ function RootLayoutContent() {
         <Stack.Screen name="pay/[token]" options={{ headerShown: false }} />
         <Stack.Screen name="corporate" options={{ headerShown: false }} />
         <Stack.Screen name="portfolio" options={{ headerShown: false }} />
+        <Stack.Screen name="b2b-pricing" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
 
