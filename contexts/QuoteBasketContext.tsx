@@ -6,6 +6,8 @@ export interface QuoteBasketItem {
   productName: string;
   photoUrl: string | null;
   quantity: number;
+  /** 'package' items are priced per-person (event packages), not per-piece. */
+  type?: 'product' | 'package';
 }
 
 interface QuoteBasketContextType {

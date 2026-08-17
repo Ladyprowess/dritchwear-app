@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle, ImagePlus, X, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, ImagePlus, X, Trash2, Package } from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -29,6 +29,7 @@ export default function CorporateQuoteScreen() {
   const [contactName, setContactName] = useState('');
   const [email, setEmail] = useState(user?.email || '');
   const [phone, setPhone] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const [productInterest, setProductInterest] = useState('');
   const [quantity, setQuantity] = useState('');
   const [brandingType, setBrandingType] = useState('');
@@ -62,7 +63,7 @@ export default function CorporateQuoteScreen() {
 
     setSubmitting(true);
     try {
-      const basketSummary = basketItems.map((i) => `${i.productName} - ${i.quantity} pieces`).join('; ');
+      const basketSummary = basketItems.map((i) => `${i.productName} - ${i.quantity} ${i.type === 'package' ? 'people' : 'pieces'}`).join('; ');
       const totalBasketQty = basketItems.reduce((sum, i) => sum + i.quantity, 0);
 
       // Generated client-side so we know the id without needing the insert to
@@ -80,6 +81,7 @@ export default function CorporateQuoteScreen() {
           contact_name: contactName.trim(),
           email: email.trim(),
           phone: phone.trim() || null,
+          delivery_address: deliveryAddress.trim() || null,
           product_interest: basketSummary || productInterest.trim() || null,
           estimated_quantity: quantity || (totalBasketQty ? `${totalBasketQty} pieces (from basket)` : ''),
           branding_type: brandingType || null,
@@ -122,8 +124,8 @@ export default function CorporateQuoteScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
           <View style={[styles.headerInner, isDesktop && styles.headerInnerDesktop]}>
             <Pressable style={styles.backButton} onPress={() => smartBack(router, '/corporate' as any)} accessibilityRole="button" accessibilityLabel="Back">
@@ -146,16 +148,18 @@ export default function CorporateQuoteScreen() {
                     {item.photoUrl ? (
                       <Image source={{ uri: item.photoUrl }} style={styles.basketThumb} resizeMode="cover" />
                     ) : (
-                      <View style={[styles.basketThumb, styles.basketThumbPlaceholder]} />
+                      <View style={[styles.basketThumb, styles.basketThumbPlaceholder]}>
+                        {item.type === 'package' && <Package size={18} color="#9CA3AF" />}
+                      </View>
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.basketItemName}>{item.productName}</Text>
-                      <Text style={styles.basketItemQty}>{item.quantity} pieces</Text>
+                      <Text style={styles.basketItemQty}>{item.quantity} {item.type === 'package' ? 'people' : 'pieces'}</Text>
                     </View>
-                    <Pressable onPress={() => updateQuantity(item.productId, item.quantity - 10)} style={styles.basketQtyBtn}>
+                    <Pressable onPress={() => updateQuantity(item.productId, item.quantity - (item.type === 'package' ? 5 : 10))} style={styles.basketQtyBtn}>
                       <Text style={styles.basketQtyBtnText}>-</Text>
                     </Pressable>
-                    <Pressable onPress={() => updateQuantity(item.productId, item.quantity + 10)} style={styles.basketQtyBtn}>
+                    <Pressable onPress={() => updateQuantity(item.productId, item.quantity + (item.type === 'package' ? 5 : 10))} style={styles.basketQtyBtn}>
                       <Text style={styles.basketQtyBtnText}>+</Text>
                     </Pressable>
                     <Pressable onPress={() => removeItem(item.productId)} style={styles.basketRemoveBtn} hitSlop={6}>
@@ -183,6 +187,18 @@ export default function CorporateQuoteScreen() {
 
             <Text style={styles.label}>Phone</Text>
             <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="08012345678" placeholderTextColor="#9CA3AF" keyboardType="phone-pad" />
+
+            <Text style={styles.label}>Delivery Address</Text>
+            <TextInput
+              style={[styles.input, styles.multiline]}
+              value={deliveryAddress}
+              onChangeText={setDeliveryAddress}
+              placeholder="Where should we deliver this order?"
+              placeholderTextColor="#9CA3AF"
+              multiline
+              numberOfLines={2}
+              textAlignVertical="top"
+            />
 
             {basketItems.length === 0 && (
               <>
@@ -244,8 +260,8 @@ export default function CorporateQuoteScreen() {
             </Pressable>
           </View>
         </ScrollView>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -277,7 +293,7 @@ const styles = StyleSheet.create({
   basketTitle: { fontSize: 15, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 12 },
   basketRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   basketThumb: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F3F4F6' },
-  basketThumbPlaceholder: { backgroundColor: '#E5E7EB' },
+  basketThumbPlaceholder: { backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   basketItemName: { fontSize: 13.5, fontFamily: 'Inter-SemiBold', color: '#1F2937' },
   basketItemQty: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 1 },
   basketQtyBtn: { width: 28, height: 28, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },

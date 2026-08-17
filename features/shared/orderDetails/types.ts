@@ -25,7 +25,10 @@ export const customStatusOptions = [
   'under_review',
   'quoted',
   'accepted',
-  'rejected',
+  'processing',
+  'shipped',
+  'delivered',
   'completed',
+  'rejected',
   'cancelled',
 ];

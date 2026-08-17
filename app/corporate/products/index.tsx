@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, Package, X, Minus, Plus } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { smartBack } from '@/lib/navigation';
 import { useDesktopLayout } from '@/hooks/useDesktopLayout';
@@ -24,26 +24,50 @@ interface B2BProduct {
   branding_note: string | null;
 }
 
+interface B2BPackage {
+  id: string;
+  name: string;
+  description: string | null;
+  price_per_person: number | null;
+}
+
 function formatNaira(n: number | null): string {
   return n == null ? '-' : `₦${n.toLocaleString('en-NG')}`;
 }
 
+const PAGE_SIZE = 10;
+
 export default function CorporateProductsScreen() {
   const router = useRouter();
   const { isDesktop, isWideDesktop } = useDesktopLayout();
-  const { getTotalPieces } = useQuoteBasket();
+  const { addItem, getTotalPieces } = useQuoteBasket();
   const basketCount = getTotalPieces();
 
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<B2BProduct[]>([]);
+  const [packages, setPackages] = useState<B2BPackage[]>([]);
+  const [page, setPage] = useState(1);
+  const [selectedPackage, setSelectedPackage] = useState<B2BPackage | null>(null);
+  const [packageCount, setPackageCount] = useState(20);
+  const [packageAdded, setPackageAdded] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('b2b_products').select('*').order('sort_order', { ascending: true });
-      setProducts((data || []) as B2BProduct[]);
+      const [{ data: p }, { data: pk }] = await Promise.all([
+        supabase.from('b2b_products').select('*').order('sort_order', { ascending: true }),
+        supabase.from('b2b_packages').select('*').order('sort_order', { ascending: true }),
+      ]);
+      setProducts((p || []) as B2BProduct[]);
+      setPackages((pk || []) as B2BPackage[]);
       setLoading(false);
     })();
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
+  const pagedProducts = useMemo(
+    () => products.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [products, page]
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -71,7 +95,7 @@ export default function CorporateProductsScreen() {
       ) : (
         <ScrollView contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]} showsVerticalScrollIndicator={false}>
           <View style={isDesktop && styles.grid}>
-            {products.map((item) => (
+            {pagedProducts.map((item) => (
               <Pressable
                 key={item.id}
                 style={[styles.card, isDesktop && styles.cardDesktop, isWideDesktop && styles.cardWide]}
@@ -91,6 +115,50 @@ export default function CorporateProductsScreen() {
               </Pressable>
             ))}
           </View>
+
+          {totalPages > 1 && (
+            <View style={styles.paginationRow}>
+              <Pressable
+                disabled={page === 1}
+                style={[styles.pageBtn, page === 1 && styles.pageBtnDisabled]}
+                onPress={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <Text style={styles.pageBtnText}>Previous</Text>
+              </Pressable>
+              <Text style={styles.pageIndicator}>Page {page} of {totalPages}</Text>
+              <Pressable
+                disabled={page === totalPages}
+                style={[styles.pageBtn, page === totalPages && styles.pageBtnDisabled]}
+                onPress={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                <Text style={styles.pageBtnText}>Next</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {packages.length > 0 && (
+            <View style={styles.packagesSection}>
+              <Text style={styles.packagesSectionTitle}>Event Packages</Text>
+              <Text style={styles.packagesSectionSub}>Bundled sets priced per person - easier to budget for a full attendee list.</Text>
+              <View style={isDesktop && styles.packageGrid}>
+                {packages.map((pkg) => (
+                  <Pressable
+                    key={pkg.id}
+                    style={[styles.packageCard, isDesktop && styles.packageCardDesktop]}
+                    onPress={() => { setSelectedPackage(pkg); setPackageCount(20); setPackageAdded(false); }}
+                  >
+                    <View style={styles.packageIcon}><Package size={18} color={BRAND.purple} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.packageName}>{pkg.name}</Text>
+                      {pkg.description ? <Text style={styles.packageDesc} numberOfLines={1}>{pkg.description}</Text> : null}
+                    </View>
+                    <Text style={styles.packagePrice}>{formatNaira(pkg.price_per_person)}<Text style={styles.packagePriceUnit}>/person</Text></Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
           <Text style={styles.disclaimer}>
             Prices shown are product and standard branding estimates. Final pricing is confirmed after we review your logo, specifications and quantity.
           </Text>
@@ -103,6 +171,58 @@ export default function CorporateProductsScreen() {
           <ChevronRight size={16} color="#FFFFFF" />
         </Pressable>
       )}
+
+      <Modal visible={!!selectedPackage} animationType="slide" transparent onRequestClose={() => setSelectedPackage(null)}>
+        <View style={styles.packageModalBackdrop}>
+          <View style={styles.packageModalCard}>
+            <View style={styles.packageModalHeader}>
+              <View style={styles.packageIcon}><Package size={18} color={BRAND.purple} /></View>
+              <Pressable onPress={() => setSelectedPackage(null)} hitSlop={8}>
+                <X size={22} color="#6B7280" />
+              </Pressable>
+            </View>
+            {selectedPackage && (
+              <>
+                <Text style={styles.packageModalName}>{selectedPackage.name}</Text>
+                <Text style={styles.packageModalPrice}>{formatNaira(selectedPackage.price_per_person)}<Text style={styles.packagePriceUnit}> / person</Text></Text>
+                {selectedPackage.description ? <Text style={styles.packageModalDesc}>{selectedPackage.description}</Text> : null}
+
+                <Text style={styles.qtyLabel}>Number of People</Text>
+                <View style={styles.qtyRow}>
+                  <Pressable style={styles.qtyBtn} onPress={() => setPackageCount((c) => Math.max(1, c - 5))}>
+                    <Minus size={16} color={BRAND.purple} />
+                  </Pressable>
+                  <Text style={styles.qtyValue}>{packageCount}</Text>
+                  <Pressable style={styles.qtyBtn} onPress={() => setPackageCount((c) => c + 5)}>
+                    <Plus size={16} color={BRAND.purple} />
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  style={[styles.quoteBtn, packageAdded && styles.quoteBtnDone]}
+                  onPress={async () => {
+                    await addItem({
+                      productId: `package:${selectedPackage.id}`,
+                      productName: selectedPackage.name,
+                      photoUrl: null,
+                      quantity: packageCount,
+                      type: 'package',
+                    });
+                    setPackageAdded(true);
+                  }}
+                >
+                  <Text style={styles.quoteBtnText}>{packageAdded ? 'Added to Quote ✓' : 'Add to Quote'}</Text>
+                </Pressable>
+                {packageAdded && (
+                  <Pressable style={styles.viewQuoteLink} onPress={() => { setSelectedPackage(null); router.push('/corporate/quote' as any); }}>
+                    <Text style={styles.viewQuoteLinkText}>Continue browsing, or build your quote →</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -137,6 +257,39 @@ const styles = StyleSheet.create({
   linkText: { fontSize: 13, fontFamily: 'Inter-Bold', color: BRAND.purple },
 
   disclaimer: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 17, marginTop: 20, textAlign: 'center' },
+
+  paginationRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 8 },
+  pageBtn: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
+  pageBtnDisabled: { opacity: 0.4 },
+  pageBtnText: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#4B5563' },
+  pageIndicator: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280' },
+
+  packageModalBackdrop: { flex: 1, backgroundColor: 'rgba(10,6,16,0.5)', justifyContent: 'flex-end' },
+  packageModalCard: { backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 36 },
+  packageModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  packageModalName: { fontSize: 19, fontFamily: 'Inter-Bold', color: '#17131C', marginBottom: 4 },
+  packageModalPrice: { fontSize: 16, fontFamily: 'Inter-Bold', color: BRAND.purple, marginBottom: 14 },
+  packageModalDesc: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 21, marginBottom: 20 },
+
+  qtyLabel: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#374151', marginBottom: 8 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
+  qtyBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
+  qtyValue: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', minWidth: 50, textAlign: 'center' },
+  quoteBtnDone: { backgroundColor: '#10B981' },
+  viewQuoteLink: { alignItems: 'center', paddingVertical: 12 },
+  viewQuoteLinkText: { color: BRAND.purple, fontSize: 13, fontFamily: 'Inter-Bold' },
+
+  packagesSection: { marginTop: 32 },
+  packagesSectionTitle: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', marginBottom: 6 },
+  packagesSectionSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', lineHeight: 19, marginBottom: 16 },
+  packageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  packageCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#EDE9F6' },
+  packageCardDesktop: { width: '48%', marginBottom: 0 },
+  packageIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
+  packageName: { fontSize: 14, fontFamily: 'Inter-Bold', color: '#1F2937' },
+  packageDesc: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 2 },
+  packagePrice: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
+  packagePriceUnit: { fontSize: 10.5, fontFamily: 'Inter-Regular', color: '#9CA3AF' },
 
   quoteBtn: { backgroundColor: BRAND.purple, borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14 },
   quoteBtnText: { color: '#FFFFFF', fontSize: 15, fontFamily: 'Inter-Bold' },

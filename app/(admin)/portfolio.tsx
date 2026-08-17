@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TextInput,
-  Alert, Modal, ActivityIndicator, Image,
+  Alert, Modal, ActivityIndicator, Image, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -223,6 +223,7 @@ export default function AdminPortfolioScreen() {
       </ScrollView>
 
       <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{editingId ? 'Edit Project' : 'Add Project'}</Text>
@@ -320,6 +321,7 @@ export default function AdminPortfolioScreen() {
             <Text style={styles.hint}>Photos up to 12MB, videos up to 40MB. You can select multiple at once. Tap the small photo icon on a video to set its cover thumbnail.</Text>
           </ScrollView>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

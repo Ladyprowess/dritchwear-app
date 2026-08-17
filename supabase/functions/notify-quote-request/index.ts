@@ -53,6 +53,7 @@ Deno.serve(async (req: Request) => {
     ['Estimated quantity', quote.estimated_quantity],
     ['Branding type', quote.branding_type || '-'],
     ['Needed by', quote.needed_by || '-'],
+    ['Delivery address', quote.delivery_address || '-'],
   ];
   const factsHtml = facts.map(([label, value]) =>
     `<tr><td style="padding:4px 0;font-size:13px;color:#8A838F">${esc(label)}</td><td style="padding:4px 0;font-size:13px;font-weight:700;color:#17131C;text-align:right">${esc(String(value))}</td></tr>`
@@ -64,7 +65,10 @@ Deno.serve(async (req: Request) => {
     bodyHtml: p('A company just submitted a bulk/corporate merch inquiry through the website.', 18)
       + `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin:0 0 20px 0">${factsHtml}</table>`
       + (quote.notes ? infoBox(`<strong style="color:#17131C">Notes</strong><br/>${esc(quote.notes)}`) : '')
-      + (quote.logo_url ? p(`<a href="${esc(quote.logo_url)}" style="color:#5A2D82;font-weight:700">View uploaded logo &rsaquo;</a>`, 18) : ''),
+      + (quote.logo_url ? p(`<a href="${esc(quote.logo_url)}" style="color:#5A2D82;font-weight:700">View uploaded logo &rsaquo;</a>`, 18) : '')
+      + (quote.custom_request_id
+          ? infoBox('This request was submitted by a signed-in customer and is already in the admin Orders tab - send the price/invoice from there.')
+          : infoBox('This visitor was not signed in, so this request is email-only - there is nothing to manage in the Orders tab for it.')),
     ctaPrimaryLabel: 'Reply by Email',
     ctaPrimaryUrl: `mailto:${esc(quote.email)}`,
     footerNote: 'Reply directly to follow up, or reach them by phone if provided.',

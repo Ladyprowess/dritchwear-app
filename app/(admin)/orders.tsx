@@ -133,12 +133,13 @@ export default function AdminOrdersScreen() {
     logo_placement,
     delivery_address,
     deadline,
+    contact_phone,
     status,
     created_at,
     currency,
     profiles!inner(full_name, email, phone, preferred_currency),
     invoices(*)
-  `)  
+  `)
   .order('created_at', { ascending: false });
 
 console.log('🧪 CUSTOM REQUEST DATA:', customData);

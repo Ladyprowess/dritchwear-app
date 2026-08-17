@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Plus, Save, X, Trash2, ImagePlus, Package } from 'lucide-react-native';
@@ -273,6 +273,7 @@ export default function AdminB2BCatalogScreen() {
 
       {/* Product modal */}
       <Modal visible={showProductModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowProductModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{editingProductId ? 'Edit Product' : 'Add Product'}</Text>
@@ -343,10 +344,12 @@ export default function AdminB2BCatalogScreen() {
             <Text style={styles.hint}>Prices above are garment-only. Use the branding note to make clear that logo/print cost is added separately.</Text>
           </ScrollView>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Package modal */}
       <Modal visible={showPackageModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPackageModal(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{editingPackageId ? 'Edit Package' : 'Add Package'}</Text>
@@ -368,6 +371,7 @@ export default function AdminB2BCatalogScreen() {
             <TextInput style={styles.input} value={packageForm.pricePerPerson} onChangeText={(t) => setPackageForm((p) => ({ ...p, pricePerPerson: t.replace(/[^0-9]/g, '') }))} placeholder="e.g. 12000" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
           </ScrollView>
         </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
