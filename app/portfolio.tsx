@@ -10,6 +10,9 @@ import { supabase } from '@/lib/supabase';
 import { smartBack } from '@/lib/navigation';
 import type { UploadedMedia } from '@/lib/uploadMedia';
 import RichTextView from '@/components/RichTextView';
+import { useDesktopLayout } from '@/hooks/useDesktopLayout';
+
+const GRID_MAX_WIDTH = 1280;
 
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
@@ -44,6 +47,7 @@ function VideoTile({ uri }: { uri: string }) {
 export default function PortfolioScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const { isDesktop } = useDesktopLayout();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [filter, setFilter] = useState('all');
@@ -63,8 +67,14 @@ export default function PortfolioScreen() {
   }, []);
 
   const filtered = filter === 'all' ? items : items.filter((i) => i.category === filter);
-  const numColumns = width >= 900 ? 3 : width >= 600 ? 2 : 2;
-  const cardWidth = (Math.min(width, 1100) - 16 * 2 - 12 * (numColumns - 1)) / numColumns;
+  const columnsForWidth = width >= 1500 ? 5 : width >= 1200 ? 4 : width >= 900 ? 3 : width >= 600 ? 2 : 2;
+  // Never render more columns than there are items - a handful of cards
+  // spread across a 5-column grid on a wide screen just looks like sparse,
+  // tiny cards stuck in the top-left with dead space around them. Fewer
+  // columns means the same math below makes each card bigger instead.
+  const numColumns = Math.max(1, Math.min(columnsForWidth, filtered.length || columnsForWidth));
+  const gridWidth = Math.min(width, GRID_MAX_WIDTH);
+  const cardWidth = (gridWidth - 32 * 2 - 16 * (numColumns - 1)) / numColumns;
 
   const openLightbox = (item: PortfolioItem) => {
     setLightboxItem(item);
@@ -84,21 +94,23 @@ export default function PortfolioScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => smartBack(router, '/(customer)/shop')}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-        >
-          <ArrowLeft size={20} color={BRAND.purple} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Our Past Work</Text>
-          <Text style={styles.headerSub}>A look at merch we've produced for teams and events</Text>
+        <View style={[styles.headerInner, isDesktop && styles.headerInnerDesktop]}>
+          <Pressable
+            style={styles.backButton}
+            onPress={() => smartBack(router, '/(customer)/shop')}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+          >
+            <ArrowLeft size={20} color={BRAND.purple} />
+          </Pressable>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, isDesktop && styles.headerTitleDesktop]}>Our Past Work</Text>
+            <Text style={styles.headerSub}>A look at merch we've produced for teams and events</Text>
+          </View>
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={[styles.filterRow, isDesktop && styles.filterRowDesktop]}>
         {FILTERS.map((f) => (
           <Pressable
             key={f.value}
@@ -123,8 +135,8 @@ export default function PortfolioScreen() {
           data={filtered}
           keyExtractor={(item) => item.id}
           numColumns={numColumns}
-          contentContainerStyle={styles.grid}
-          columnWrapperStyle={numColumns > 1 ? { gap: 12 } : undefined}
+          contentContainerStyle={[styles.grid, isDesktop && styles.gridDesktop]}
+          columnWrapperStyle={numColumns > 1 ? { gap: isDesktop ? 16 : 12 } : undefined}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <Pressable style={[styles.card, { width: cardWidth }]} onPress={() => openLightbox(item)}>
@@ -209,22 +221,26 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#9CA3AF' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 20, paddingVertical: 16,
   },
+  headerInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerInnerDesktop: { maxWidth: GRID_MAX_WIDTH, alignSelf: 'center', width: '100%', paddingHorizontal: 12 },
   backButton: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937' },
+  headerTitleDesktop: { fontSize: 22 },
   headerSub: { fontSize: 12.5, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 2 },
 
   filterScroll: { flexGrow: 0, flexShrink: 0 },
   filterRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8, alignItems: 'flex-start' },
+  filterRowDesktop: { maxWidth: GRID_MAX_WIDTH, alignSelf: 'center', width: '100%', paddingHorizontal: 28 },
   filterChip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
   filterChipActive: { backgroundColor: BRAND.purple, borderColor: BRAND.purple },
   filterChipText: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#4B5563' },
   filterChipTextActive: { color: '#FFF' },
 
   grid: { paddingHorizontal: 16, paddingBottom: 40, gap: 16 },
+  gridDesktop: { maxWidth: GRID_MAX_WIDTH, alignSelf: 'center', width: '100%', paddingHorizontal: 32, gap: 16 },
   card: { marginBottom: 4 },
   cardThumbWrap: { borderRadius: 14, overflow: 'hidden', backgroundColor: '#F3F4F6' },
   cardThumb: { width: '100%', height: '100%' },

@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { pickAndUploadImage } from '@/lib/uploadImage';
 import { smartBack } from '@/lib/navigation';
+import { useDesktopLayout } from '@/hooks/useDesktopLayout';
 
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
@@ -74,6 +75,7 @@ function formatNaira(n: number | null): string {
 export default function CorporateScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const { isDesktop, isWideDesktop } = useDesktopLayout();
   const scrollRef = useRef<ScrollView>(null);
   const sectionY = useRef<Record<string, number>>({});
 
@@ -195,39 +197,61 @@ export default function CorporateScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Pressable
-            style={styles.backButton}
-            onPress={() => smartBack(router, '/(customer)/shop')}
-            accessibilityRole="button"
-            accessibilityLabel="Back to shop"
-          >
-            <ArrowLeft size={20} color={BRAND.purple} />
-          </Pressable>
-          <View style={styles.headerIcon}>
-            <Briefcase size={22} color={BRAND.purple} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>Dritchwear for Business</Text>
-            <Text style={styles.headerSub}>Corporate & event merchandise</Text>
+          <View style={[styles.headerInner, isDesktop && styles.headerInnerDesktop]}>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => smartBack(router, '/(customer)/shop')}
+              accessibilityRole="button"
+              accessibilityLabel="Back to shop"
+            >
+              <ArrowLeft size={20} color={BRAND.purple} />
+            </Pressable>
+            <View style={styles.headerIcon}>
+              <Briefcase size={22} color={BRAND.purple} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.headerTitle}>Dritchwear for Business</Text>
+              <Text style={styles.headerSub}>Corporate & event merchandise</Text>
+            </View>
           </View>
         </View>
 
-        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={[styles.content, isDesktop && styles.contentDesktop]} showsVerticalScrollIndicator={false}>
           {/* Hero */}
-          <Text style={styles.heroTitle}>Branded Merchandise for Teams, Companies & Events</Text>
-          <Text style={styles.heroSub}>
-            Premium apparel and branded merchandise for companies, tech teams and events - produced to your specifications, with clear pricing, volume discounts, and reliable lead times.
-          </Text>
-          <Text style={styles.heroMoq}>Minimum order: 20 pieces</Text>
-          <Text style={styles.heroEyebrow}>T-shirts · Hoodies · Caps · Tote Bags</Text>
+          <View style={isDesktop && styles.heroRow}>
+            <View style={isDesktop && styles.heroCol}>
+              <Text style={[styles.heroTitle, isDesktop && styles.heroTitleDesktop]}>Branded Merchandise for Teams, Companies & Events</Text>
+              <Text style={[styles.heroSub, isDesktop && styles.heroSubDesktop]}>
+                Premium apparel and branded merchandise for companies, tech teams and events - produced to your specifications, with clear pricing, volume discounts, and reliable lead times.
+              </Text>
+              <Text style={styles.heroMoq}>Minimum order: 20 pieces</Text>
 
-          <View style={styles.heroActions}>
-            <Pressable style={styles.heroPrimaryBtn} onPress={() => scrollToSection('products')}>
-              <Text style={styles.heroPrimaryBtnText}>View Products & Prices</Text>
-            </Pressable>
-            <Pressable style={styles.heroSecondaryBtn} onPress={() => scrollToSection('quote')}>
-              <Text style={styles.heroSecondaryBtnText}>Request a Quote</Text>
-            </Pressable>
+              <View style={styles.heroActions}>
+                <Pressable style={styles.heroPrimaryBtn} onPress={() => scrollToSection('products')}>
+                  <Text style={styles.heroPrimaryBtnText}>View Products & Prices</Text>
+                </Pressable>
+                <Pressable style={styles.heroSecondaryBtn} onPress={() => scrollToSection('quote')}>
+                  <Text style={styles.heroSecondaryBtnText}>Request a Quote</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {isDesktop && (
+              <View style={styles.heroFactsCard}>
+                <Text style={styles.heroFactsTitle}>At a glance</Text>
+                {[
+                  ['Minimum order', '20 pieces'],
+                  ['Branding', 'Screen print & embroidery'],
+                  ['Lead time', 'Fixed, confirmed at quote'],
+                  ['Tracking', 'Live order status'],
+                ].map(([label, value]) => (
+                  <View key={label} style={styles.heroFactRow}>
+                    <Text style={styles.heroFactLabel}>{label}</Text>
+                    <Text style={styles.heroFactValue}>{value}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* Products & Pricing */}
@@ -237,31 +261,35 @@ export default function CorporateScreen() {
 
             {products.length === 0 ? (
               <Text style={styles.emptySection}>Our full price list is being finalised - request a quote below and we'll send pricing directly.</Text>
-            ) : products.map((item) => (
-              <View key={item.id} style={styles.productCard}>
-                {item.photo_url && <Image source={{ uri: item.photo_url }} style={styles.productPhoto} resizeMode="cover" />}
-                <View style={styles.productBody}>
-                  <Text style={styles.productName}>{item.name}</Text>
-                  {(item.colors.length > 0 || item.sizes.length > 0) && (
-                    <Text style={styles.productSpec}>
-                      {item.colors.length > 0 ? item.colors.join(', ') : ''}
-                      {item.colors.length > 0 && item.sizes.length > 0 ? ' · ' : ''}
-                      {item.sizes.length > 0 ? `Sizes ${item.sizes.join(', ')}` : ''}
-                    </Text>
-                  )}
-                  {item.fabric_spec ? <Text style={styles.productSpec}>{item.fabric_spec}</Text> : null}
-                  <Text style={styles.productMoq}>Min {item.min_qty} pieces</Text>
+            ) : (
+              <View style={isDesktop && styles.productGrid}>
+                {products.map((item) => (
+                  <View key={item.id} style={[styles.productCard, isDesktop && styles.productCardDesktop, isWideDesktop && styles.productCardWide]}>
+                    {item.photo_url && <Image source={{ uri: item.photo_url }} style={[styles.productPhoto, isDesktop && styles.productPhotoDesktop]} resizeMode="cover" />}
+                    <View style={styles.productBody}>
+                      <Text style={styles.productName}>{item.name}</Text>
+                      {(item.colors.length > 0 || item.sizes.length > 0) && (
+                        <Text style={styles.productSpec}>
+                          {item.colors.length > 0 ? item.colors.join(', ') : ''}
+                          {item.colors.length > 0 && item.sizes.length > 0 ? ' · ' : ''}
+                          {item.sizes.length > 0 ? `Sizes ${item.sizes.join(', ')}` : ''}
+                        </Text>
+                      )}
+                      {item.fabric_spec ? <Text style={styles.productSpec}>{item.fabric_spec}</Text> : null}
+                      <Text style={styles.productMoq}>Min {item.min_qty} pieces</Text>
 
-                  <View style={styles.priceLadder}>
-                    <View style={styles.priceRow}><Text style={styles.priceRange}>20-49</Text><Text style={styles.priceValue}>{formatNaira(item.price_20_49)}</Text></View>
-                    <View style={styles.priceRow}><Text style={styles.priceRange}>50-99</Text><Text style={styles.priceValue}>{formatNaira(item.price_50_99)}</Text></View>
-                    <View style={styles.priceRow}><Text style={styles.priceRange}>100+</Text><Text style={styles.priceValue}>{formatNaira(item.price_100_plus)}</Text></View>
+                      <View style={styles.priceLadder}>
+                        <View style={styles.priceRow}><Text style={styles.priceRange}>20-49</Text><Text style={styles.priceValue}>{formatNaira(item.price_20_49)}</Text></View>
+                        <View style={styles.priceRow}><Text style={styles.priceRange}>50-99</Text><Text style={styles.priceValue}>{formatNaira(item.price_50_99)}</Text></View>
+                        <View style={styles.priceRow}><Text style={styles.priceRange}>100+</Text><Text style={styles.priceValue}>{formatNaira(item.price_100_plus)}</Text></View>
+                      </View>
+
+                      {item.branding_note ? <Text style={styles.brandingNote}>* {item.branding_note}</Text> : null}
+                    </View>
                   </View>
-
-                  {item.branding_note ? <Text style={styles.brandingNote}>* {item.branding_note}</Text> : null}
-                </View>
+                ))}
               </View>
-            ))}
+            )}
 
             <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
               <Text style={styles.portfolioLinkText}>See Examples of Our Past Work →</Text>
@@ -273,39 +301,43 @@ export default function CorporateScreen() {
             <View>
               <Text style={styles.sectionTitle}>Event Packages</Text>
               <Text style={styles.sectionSub}>Bundled sets priced per person - easier to budget for a full attendee list.</Text>
-              {packages.map((pkg) => (
-                <View key={pkg.id} style={styles.packageCard}>
-                  <View style={styles.packageIcon}><Package size={18} color={BRAND.purple} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.packageName}>{pkg.name}</Text>
-                    {pkg.description ? <Text style={styles.packageDesc}>{pkg.description}</Text> : null}
+              <View style={isDesktop && styles.packageGrid}>
+                {packages.map((pkg) => (
+                  <View key={pkg.id} style={[styles.packageCard, isDesktop && styles.packageCardDesktop]}>
+                    <View style={styles.packageIcon}><Package size={18} color={BRAND.purple} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.packageName}>{pkg.name}</Text>
+                      {pkg.description ? <Text style={styles.packageDesc}>{pkg.description}</Text> : null}
+                    </View>
+                    <Text style={styles.packagePrice}>{formatNaira(pkg.price_per_person)}<Text style={styles.packagePriceUnit}>/person</Text></Text>
                   </View>
-                  <Text style={styles.packagePrice}>{formatNaira(pkg.price_per_person)}<Text style={styles.packagePriceUnit}>/person</Text></Text>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
           )}
 
           {/* Process */}
           <Text style={styles.sectionTitle}>Our Process</Text>
-          {PROCESS_STEPS.map((step) => (
-            <View key={step.n} style={styles.stepRow}>
-              <View style={styles.stepIconWrap}>
-                <step.icon size={16} color={BRAND.purple} />
+          <View style={isDesktop && styles.processRowDesktop}>
+            {PROCESS_STEPS.map((step) => (
+              <View key={step.n} style={[styles.stepRow, isDesktop && styles.stepColDesktop]}>
+                <View style={styles.stepIconWrap}>
+                  <step.icon size={16} color={BRAND.purple} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stepTitle}>{step.n} - {step.title}</Text>
+                  <Text style={styles.stepBody}>{step.body}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.stepTitle}>{step.n} — {step.title}</Text>
-                <Text style={styles.stepBody}>{step.body}</Text>
-              </View>
-            </View>
-          ))}
+            ))}
+          </View>
 
           {/* Why Dritchwear */}
           <Text style={styles.sectionTitle}>Why Dritchwear</Text>
           <Text style={styles.sectionSub}>Built for real business orders.</Text>
-          <View style={styles.whyGrid}>
+          <View style={[styles.whyGrid, isDesktop && styles.whyGridDesktop]}>
             {WHY_DRITCHWEAR.map((point) => (
-              <View key={point} style={styles.whyRow}>
+              <View key={point} style={[styles.whyRow, isDesktop && styles.whyRowDesktop]}>
                 <ShieldCheck size={14} color={BRAND.gold} />
                 <Text style={styles.whyText}>{point}</Text>
               </View>
@@ -316,23 +348,43 @@ export default function CorporateScreen() {
           {pastWork.length > 0 && (
             <View>
               <Text style={styles.sectionTitle}>Past Work</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={styles.pastWorkRow}>
-                {pastWork.map((item) => {
-                  const thumb = item.media_urls?.[0];
-                  const thumbUri = thumb?.type === 'image' ? thumb.url : thumb?.posterUrl;
-                  return (
-                    <Pressable key={item.id} style={styles.pastWorkCard} onPress={() => router.push('/portfolio' as any)}>
-                      {thumbUri ? (
-                        <Image source={{ uri: thumbUri }} style={styles.pastWorkPhoto} resizeMode="cover" />
-                      ) : (
-                        <View style={[styles.pastWorkPhoto, styles.pastWorkPhotoPlaceholder]} />
-                      )}
-                      <Text style={styles.pastWorkTitle} numberOfLines={2}>{item.title}</Text>
-                      {item.client_name ? <Text style={styles.pastWorkClient}>{item.client_name}</Text> : null}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+              {isDesktop ? (
+                <View style={styles.pastWorkGridDesktop}>
+                  {pastWork.map((item) => {
+                    const thumb = item.media_urls?.[0];
+                    const thumbUri = thumb?.type === 'image' ? thumb.url : thumb?.posterUrl;
+                    return (
+                      <Pressable key={item.id} style={styles.pastWorkCardDesktop} onPress={() => router.push('/portfolio' as any)}>
+                        {thumbUri ? (
+                          <Image source={{ uri: thumbUri }} style={styles.pastWorkPhotoDesktop} resizeMode="cover" />
+                        ) : (
+                          <View style={[styles.pastWorkPhotoDesktop, styles.pastWorkPhotoPlaceholder]} />
+                        )}
+                        <Text style={styles.pastWorkTitle} numberOfLines={2}>{item.title}</Text>
+                        {item.client_name ? <Text style={styles.pastWorkClient}>{item.client_name}</Text> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={styles.pastWorkRow}>
+                  {pastWork.map((item) => {
+                    const thumb = item.media_urls?.[0];
+                    const thumbUri = thumb?.type === 'image' ? thumb.url : thumb?.posterUrl;
+                    return (
+                      <Pressable key={item.id} style={styles.pastWorkCard} onPress={() => router.push('/portfolio' as any)}>
+                        {thumbUri ? (
+                          <Image source={{ uri: thumbUri }} style={styles.pastWorkPhoto} resizeMode="cover" />
+                        ) : (
+                          <View style={[styles.pastWorkPhoto, styles.pastWorkPhotoPlaceholder]} />
+                        )}
+                        <Text style={styles.pastWorkTitle} numberOfLines={2}>{item.title}</Text>
+                        {item.client_name ? <Text style={styles.pastWorkClient}>{item.client_name}</Text> : null}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              )}
               <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
                 <Text style={styles.portfolioLinkText}>See All Past Work →</Text>
               </Pressable>
@@ -340,7 +392,7 @@ export default function CorporateScreen() {
           )}
 
           {/* Quote form */}
-          <View onLayout={(e) => { sectionY.current.quote = e.nativeEvent.layout.y; }} style={styles.card}>
+          <View onLayout={(e) => { sectionY.current.quote = e.nativeEvent.layout.y; }} style={[styles.card, isDesktop && styles.cardDesktop]}>
             <Text style={styles.cardTitle}>Request a Quote</Text>
 
             <Text style={styles.label}>Company Name *</Text>
@@ -437,33 +489,47 @@ const styles = StyleSheet.create({
   backToShopBtnText: { color: '#FFF', fontSize: 14, fontFamily: 'Inter-Bold' },
 
   header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    paddingHorizontal: 20, paddingVertical: 16,
   },
+  headerInner: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerInnerDesktop: { maxWidth: 1120, alignSelf: 'center', width: '100%', paddingHorizontal: 20 },
   backButton: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
   headerIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#EDE9F6', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937' },
   headerSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 2 },
 
   content: { padding: 20, paddingBottom: 48 },
+  contentDesktop: { paddingHorizontal: 40, paddingTop: 32, maxWidth: 1120, alignSelf: 'center', width: '100%' },
 
+  heroRow: { flexDirection: 'row', gap: 32, alignItems: 'flex-start' },
+  heroCol: { flex: 1.3 },
   heroTitle: { fontSize: 24, fontFamily: 'Inter-Bold', color: '#17131C', lineHeight: 31, marginBottom: 10 },
+  heroTitleDesktop: { fontSize: 40, lineHeight: 48, marginBottom: 16 },
   heroSub: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 21, marginBottom: 12 },
-  heroMoq: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: BRAND.purple, marginBottom: 6 },
-  heroEyebrow: { fontSize: 12.5, fontFamily: 'Inter-SemiBold', color: '#9CA3AF', marginBottom: 18 },
+  heroSubDesktop: { fontSize: 16, lineHeight: 25, marginBottom: 16, maxWidth: 480 },
+  heroMoq: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: BRAND.purple, marginBottom: 20 },
   heroActions: { flexDirection: 'row', gap: 10, marginBottom: 32 },
   heroPrimaryBtn: { flex: 1, backgroundColor: BRAND.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   heroPrimaryBtnText: { color: '#FFF', fontSize: 13.5, fontFamily: 'Inter-Bold' },
   heroSecondaryBtn: { flex: 1, backgroundColor: '#FFF', borderWidth: 1.5, borderColor: BRAND.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   heroSecondaryBtnText: { color: BRAND.purple, fontSize: 13.5, fontFamily: 'Inter-Bold' },
+  heroFactsCard: { flex: 1, backgroundColor: '#FFF', borderRadius: 18, borderWidth: 1, borderColor: '#EDE9F6', padding: 24, marginTop: 4 },
+  heroFactsTitle: { fontSize: 13, fontFamily: 'Inter-Bold', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 14 },
+  heroFactRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  heroFactLabel: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280' },
+  heroFactValue: { fontSize: 13, fontFamily: 'Inter-Bold', color: '#17131C', textAlign: 'right' },
 
   sectionTitle: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', marginTop: 8, marginBottom: 6 },
   sectionSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', lineHeight: 19, marginBottom: 16 },
   emptySection: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 19, marginBottom: 16 },
 
+  productGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   productCard: { flexDirection: 'row', gap: 12, backgroundColor: '#FFF', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#EDE9F6' },
+  productCardDesktop: { flexDirection: 'column', width: '48%', marginBottom: 0 },
+  productCardWide: { width: '31.5%' },
   productPhoto: { width: 76, height: 76, borderRadius: 12, backgroundColor: '#F3F4F6' },
+  productPhotoDesktop: { width: '100%', height: 160, marginBottom: 12 },
   productBody: { flex: 1 },
   productName: { fontSize: 14.5, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 3 },
   productSpec: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 16 },
@@ -477,20 +543,26 @@ const styles = StyleSheet.create({
   portfolioLink: { alignItems: 'center', paddingVertical: 10, marginBottom: 8 },
   portfolioLinkText: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
 
+  packageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   packageCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#EDE9F6' },
+  packageCardDesktop: { width: '48%', marginBottom: 0 },
   packageIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
   packageName: { fontSize: 14, fontFamily: 'Inter-Bold', color: '#1F2937' },
   packageDesc: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 2 },
   packagePrice: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
   packagePriceUnit: { fontSize: 10.5, fontFamily: 'Inter-Regular', color: '#9CA3AF' },
 
+  processRowDesktop: { flexDirection: 'row', gap: 16 },
   stepRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  stepColDesktop: { flex: 1, flexDirection: 'column', alignItems: 'flex-start', gap: 10, marginBottom: 0 },
   stepIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
   stepTitle: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 2 },
   stepBody: { fontSize: 12.5, fontFamily: 'Inter-Regular', color: '#6B7280', lineHeight: 18 },
 
   whyGrid: { gap: 10, marginBottom: 8 },
+  whyGridDesktop: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 24, rowGap: 12 },
   whyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  whyRowDesktop: { width: '46%' },
   whyText: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#374151' },
 
   pastWorkRow: { paddingHorizontal: 20, gap: 12 },
@@ -499,11 +571,15 @@ const styles = StyleSheet.create({
   pastWorkPhotoPlaceholder: { backgroundColor: '#374151' },
   pastWorkTitle: { fontSize: 12.5, fontFamily: 'Inter-SemiBold', color: '#1F2937', marginTop: 6, lineHeight: 16 },
   pastWorkClient: { fontSize: 11, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 1 },
+  pastWorkGridDesktop: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  pastWorkCardDesktop: { width: '23%' },
+  pastWorkPhotoDesktop: { width: '100%', aspectRatio: 1, borderRadius: 12, backgroundColor: '#F3F4F6' },
 
   card: {
     backgroundColor: '#FFF', borderRadius: 16, padding: 20, marginTop: 24,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2,
   },
+  cardDesktop: { maxWidth: 640, alignSelf: 'center', width: '100%', padding: 32, marginTop: 40 },
   cardTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 16 },
 
   label: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#374151', marginBottom: 6, marginTop: 14 },

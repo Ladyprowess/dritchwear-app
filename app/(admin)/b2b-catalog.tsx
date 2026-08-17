@@ -317,15 +317,15 @@ export default function AdminB2BCatalogScreen() {
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.subLabel}>20-49</Text>
-                <TextInput style={styles.input} value={productForm.price20_49} onChangeText={(t) => setProductForm((p) => ({ ...p, price20_49: t.replace(/[^0-9]/g, '') }))} placeholder="—" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
+                <TextInput style={styles.input} value={productForm.price20_49} onChangeText={(t) => setProductForm((p) => ({ ...p, price20_49: t.replace(/[^0-9]/g, '') }))} placeholder="-" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.subLabel}>50-99</Text>
-                <TextInput style={styles.input} value={productForm.price50_99} onChangeText={(t) => setProductForm((p) => ({ ...p, price50_99: t.replace(/[^0-9]/g, '') }))} placeholder="—" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
+                <TextInput style={styles.input} value={productForm.price50_99} onChangeText={(t) => setProductForm((p) => ({ ...p, price50_99: t.replace(/[^0-9]/g, '') }))} placeholder="-" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.subLabel}>100+</Text>
-                <TextInput style={styles.input} value={productForm.price100Plus} onChangeText={(t) => setProductForm((p) => ({ ...p, price100Plus: t.replace(/[^0-9]/g, '') }))} placeholder="—" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
+                <TextInput style={styles.input} value={productForm.price100Plus} onChangeText={(t) => setProductForm((p) => ({ ...p, price100Plus: t.replace(/[^0-9]/g, '') }))} placeholder="-" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
               </View>
             </View>
 
