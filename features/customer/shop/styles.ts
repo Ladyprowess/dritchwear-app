@@ -176,7 +176,6 @@ export const styles = StyleSheet.create({
     color: '#4B5563',
   },
   salesMomentumCard: {
-    maxWidth: 720,
     marginBottom: 16,
     borderRadius: 14,
     padding: 14,
@@ -413,6 +412,16 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#EDEAF0',
   },
+  communityRowDesktop: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  communityImageDesktop: {
+    flex: 1,
+    aspectRatio: 128 / 168,
+    borderRadius: 14,
+    backgroundColor: '#EDEAF0',
+  },
   headerActions: {
     flexDirection: 'row',
     gap: 8,
@@ -429,7 +438,6 @@ export const styles = StyleSheet.create({
   },
   searchContainer: {
     marginBottom: 14,
-    maxWidth: 720,
   },
   searchBar: {
     flexDirection: 'row',
@@ -460,13 +468,17 @@ export const styles = StyleSheet.create({
     gap: 8,
   },
   catTilesContent: { paddingHorizontal: 16, gap: 16, paddingVertical: 6, alignItems: 'flex-start' },
+  catTilesContentDesktop: { paddingHorizontal: 0, gap: 24 },
   catTile: { alignItems: 'center', width: 66 },
+  catTileDesktop: { width: 88 },
   catImgWrap: { width: 62, height: 62, borderRadius: 31, overflow: 'hidden', backgroundColor: '#F3F4F6', borderWidth: 2, borderColor: 'transparent' },
+  catImgWrapDesktop: { width: 84, height: 84, borderRadius: 42 },
   catImgWrapActive: { borderColor: BRAND_PURPLE },
   catImg: { width: '100%', height: '100%' },
   catImgFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDEAF0' },
   catImgFallbackText: { fontFamily: 'Inter-Bold', fontSize: 22, color: BRAND_PURPLE },
   catLabel: { fontSize: 11, fontFamily: 'Inter-Medium', color: '#665F6C', marginTop: 6, textAlign: 'center', width: 66 },
+  catLabelDesktop: { fontSize: 13, width: 88 },
   catLabelActive: { color: BRAND_PURPLE, fontFamily: 'Inter-Bold' },
   categoryChip: {
     paddingHorizontal: 14,

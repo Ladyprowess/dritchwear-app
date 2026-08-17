@@ -5,6 +5,7 @@ import { ChevronRight, Zap } from 'lucide-react-native';
 import { optimizeImageUrl } from '@/lib/imageUrl';
 import { BRAND_GOLD, COMMUNITY_PHOTOS } from '../constants';
 import { styles } from '../styles';
+import { useDesktopLayout } from '@/hooks/useDesktopLayout';
 
 interface CatalogFooterProps {
   totalFilteredCount: number;
@@ -18,22 +19,36 @@ interface CatalogFooterProps {
 
 export function CatalogFooter({ totalFilteredCount, pageSize, currentPage, totalPages, onPageChange, isNigerian, isSignedIn }: CatalogFooterProps) {
   const router = useRouter();
+  const { isDesktop } = useDesktopLayout();
 
   return (
     <View style={styles.catalogFooter}>
       <View style={styles.communitySection}>
         <Text style={styles.editorialTitle}>Styled by the community</Text>
         <Text style={styles.editorialSubtitle}>See how our community styles Dritchwear.</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.communityRow}>
-          {COMMUNITY_PHOTOS.map((url, index) => (
-            <Image
-              key={index}
-              source={{ uri: optimizeImageUrl(url, { width: 400 }) as string }}
-              style={styles.communityImage}
-              resizeMode="cover"
-            />
-          ))}
-        </ScrollView>
+        {isDesktop ? (
+          <View style={styles.communityRowDesktop}>
+            {COMMUNITY_PHOTOS.map((url, index) => (
+              <Image
+                key={index}
+                source={{ uri: optimizeImageUrl(url, { width: 600 }) as string }}
+                style={styles.communityImageDesktop}
+                resizeMode="cover"
+              />
+            ))}
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.communityRow}>
+            {COMMUNITY_PHOTOS.map((url, index) => (
+              <Image
+                key={index}
+                source={{ uri: optimizeImageUrl(url, { width: 400 }) as string }}
+                style={styles.communityImage}
+                resizeMode="cover"
+              />
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       {totalFilteredCount > pageSize && (
