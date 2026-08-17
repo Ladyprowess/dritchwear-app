@@ -65,11 +65,13 @@ interface CustomRequest {
 
 
 const statusFilters = ['All', 'Pending', 'In Review', 'Confirmed', 'Processing', 'Shipped', 'Delivered', 'Completed', 'Cancelled', 'Custom Orders'];
+const PAGE_SIZE = 10;
 
 export default function AdminOrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customRequests, setCustomRequests] = useState<CustomRequest[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<(Order | CustomRequest)[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -222,7 +224,16 @@ filterOrders(allItems, selectedStatus, searchQuery);
       });
     }
 
+    // Regular orders and custom/B2B requests were being concatenated as two
+    // separate blocks (all orders, then all custom requests below them) -
+    // with enough regular orders, a custom request could sit off-screen
+    // indefinitely. Sorting the merged list by date means everything
+    // interleaves by recency instead of custom requests being stuck at the
+    // bottom regardless of how new they are.
+    filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
     setFilteredOrders(filtered);
+    setCurrentPage(1);
   };
 
   const handleFilterChange = (filter: string) => {
@@ -298,6 +309,9 @@ filterOrders(allItems, selectedStatus, searchQuery);
     setSelectedOrder(order);
     setShowOrderModal(true);
   };
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const pagedOrders = filteredOrders.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const isCustomRequest = (item: Order | CustomRequest): item is CustomRequest => {
     return !('order_status' in item);
@@ -430,7 +444,26 @@ filterOrders(allItems, selectedStatus, searchQuery);
           </View>
         ) : filteredOrders.length > 0 ? (
           <View style={styles.ordersContainer}>
-            {filteredOrders.map(renderOrderItem)}
+            {pagedOrders.map(renderOrderItem)}
+            {totalPages > 1 && (
+              <View style={styles.paginationRow}>
+                <Pressable
+                  disabled={currentPage === 1}
+                  style={[styles.pageButton, currentPage === 1 && styles.pageButtonDisabled]}
+                  onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                >
+                  <Text style={styles.pageButtonText}>Previous</Text>
+                </Pressable>
+                <Text style={styles.pageIndicator}>Page {currentPage} of {totalPages}</Text>
+                <Pressable
+                  disabled={currentPage === totalPages}
+                  style={[styles.pageButton, currentPage === totalPages && styles.pageButtonDisabled]}
+                  onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  <Text style={styles.pageButtonText}>Next</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.emptyContainer}>
@@ -545,6 +578,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F9FAFB',
   },
+  paginationRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16,
+    marginTop: 8, paddingVertical: 12,
+  },
+  pageButton: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF' },
+  pageButtonDisabled: { opacity: 0.4 },
+  pageButtonText: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#4B5563' },
+  pageIndicator: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

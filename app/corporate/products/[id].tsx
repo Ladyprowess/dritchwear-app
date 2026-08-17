@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Minus, Plus, ChevronRight } from 'lucide-react-native';
@@ -141,7 +141,13 @@ export default function CorporateProductDetailScreen() {
               <Pressable style={styles.qtyBtn} onPress={() => setQuantity((q) => Math.max(product.min_qty, q - 10))}>
                 <Minus size={16} color={BRAND.purple} />
               </Pressable>
-              <Text style={styles.qtyValue}>{quantity}</Text>
+              <TextInput
+                style={styles.qtyInput}
+                value={String(quantity)}
+                onChangeText={(t) => setQuantity(Math.max(1, parseInt(t.replace(/[^0-9]/g, ''), 10) || 0))}
+                keyboardType="number-pad"
+                textAlign="center"
+              />
               <Pressable style={styles.qtyBtn} onPress={() => setQuantity((q) => q + 10)}>
                 <Plus size={16} color={BRAND.purple} />
               </Pressable>
@@ -208,6 +214,10 @@ const styles = StyleSheet.create({
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   qtyBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   qtyValue: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', minWidth: 50, textAlign: 'center' },
+  qtyInput: {
+    fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', minWidth: 70,
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 8,
+  },
 
   addBtn: { backgroundColor: BRAND.purple, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
   addBtnDone: { backgroundColor: '#10B981' },

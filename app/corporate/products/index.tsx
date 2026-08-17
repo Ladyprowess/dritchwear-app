@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, ChevronRight, Package, X, Minus, Plus } from 'lucide-react-native';
@@ -192,7 +192,13 @@ export default function CorporateProductsScreen() {
                   <Pressable style={styles.qtyBtn} onPress={() => setPackageCount((c) => Math.max(1, c - 5))}>
                     <Minus size={16} color={BRAND.purple} />
                   </Pressable>
-                  <Text style={styles.qtyValue}>{packageCount}</Text>
+                  <TextInput
+                    style={styles.qtyInput}
+                    value={String(packageCount)}
+                    onChangeText={(t) => setPackageCount(Math.max(1, parseInt(t.replace(/[^0-9]/g, ''), 10) || 0))}
+                    keyboardType="number-pad"
+                    textAlign="center"
+                  />
                   <Pressable style={styles.qtyBtn} onPress={() => setPackageCount((c) => c + 5)}>
                     <Plus size={16} color={BRAND.purple} />
                   </Pressable>
@@ -275,6 +281,10 @@ const styles = StyleSheet.create({
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
   qtyBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center' },
   qtyValue: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', minWidth: 50, textAlign: 'center' },
+  qtyInput: {
+    fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', minWidth: 70,
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 10, paddingVertical: 8,
+  },
   quoteBtnDone: { backgroundColor: '#10B981' },
   viewQuoteLink: { alignItems: 'center', paddingVertical: 12 },
   viewQuoteLinkText: { color: BRAND.purple, fontSize: 13, fontFamily: 'Inter-Bold' },

@@ -154,7 +154,16 @@ export default function CorporateQuoteScreen() {
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.basketItemName}>{item.productName}</Text>
-                      <Text style={styles.basketItemQty}>{item.quantity} {item.type === 'package' ? 'people' : 'pieces'}</Text>
+                      <View style={styles.basketItemQtyRow}>
+                        <TextInput
+                          style={styles.basketQtyInput}
+                          value={String(item.quantity)}
+                          onChangeText={(t) => updateQuantity(item.productId, Math.max(1, parseInt(t.replace(/[^0-9]/g, ''), 10) || 0))}
+                          keyboardType="number-pad"
+                          textAlign="center"
+                        />
+                        <Text style={styles.basketItemQty}>{item.type === 'package' ? 'people' : 'pieces'}</Text>
+                      </View>
                     </View>
                     <Pressable onPress={() => updateQuantity(item.productId, item.quantity - (item.type === 'package' ? 5 : 10))} style={styles.basketQtyBtn}>
                       <Text style={styles.basketQtyBtnText}>-</Text>
@@ -295,7 +304,12 @@ const styles = StyleSheet.create({
   basketThumb: { width: 44, height: 44, borderRadius: 8, backgroundColor: '#F3F4F6' },
   basketThumbPlaceholder: { backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   basketItemName: { fontSize: 13.5, fontFamily: 'Inter-SemiBold', color: '#1F2937' },
-  basketItemQty: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 1 },
+  basketItemQtyRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  basketQtyInput: {
+    fontSize: 12, fontFamily: 'Inter-SemiBold', color: '#1F2937', minWidth: 36,
+    borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 6, paddingVertical: 3, paddingHorizontal: 4,
+  },
+  basketItemQty: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#6B7280' },
   basketQtyBtn: { width: 28, height: 28, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   basketQtyBtnText: { fontSize: 15, fontFamily: 'Inter-Bold', color: BRAND.purple },
   basketRemoveBtn: { padding: 4 },
