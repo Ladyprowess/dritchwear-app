@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
 import { ArrowRight, Tag } from 'lucide-react-native';
-import { getItemPriceInUserCurrency } from '@/lib/currency';
+import { getItemPriceInUserCurrency, formatCurrency } from '@/lib/currency';
 import { usePostHog } from 'posthog-react-native';
 import { fetchCommerceConfig } from '@/lib/commerceSettings';
 import { DEFAULT_COMMERCE_CONFIG } from '@/lib/fees';
@@ -23,6 +23,7 @@ export default function CartScreen() {
   const { items, updateQuantity, removeItem, clearCart, getTotalItems, appliedPromo, setAppliedPromo } = useCart();
   const posthog = usePostHog();
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(DEFAULT_COMMERCE_CONFIG.minimumOrderQuantity);
+  const [minimumOrderNgn, setMinimumOrderNgn] = useState(DEFAULT_COMMERCE_CONFIG.minimumOrderNgn);
 
   const userCurrency = profile?.preferred_currency || 'NGN';
 
@@ -33,7 +34,11 @@ export default function CartScreen() {
 
   useEffect(() => {
     let active = true;
-    fetchCommerceConfig().then((c) => { if (active) setMinimumOrderQuantity(c.minimumOrderQuantity); });
+    fetchCommerceConfig().then((c) => {
+      if (!active) return;
+      setMinimumOrderQuantity(c.minimumOrderQuantity);
+      setMinimumOrderNgn(c.minimumOrderNgn);
+    });
     return () => { active = false; };
   }, []);
 
@@ -41,6 +46,14 @@ export default function CartScreen() {
     const itemPrice = getItemPriceInUserCurrency(item.price, userCurrency);
     return sum + (itemPrice * item.quantity);
   }, 0);
+
+  // Prices are stored in NGN - the minimum-order-amount threshold is set (and
+  // meant to be compared) in NGN too, regardless of what currency the
+  // customer is viewing/paying in.
+  const subtotalInNgn = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const belowMinimumQuantity = getTotalItems() < minimumOrderQuantity;
+  const belowMinimumAmount = subtotalInNgn < minimumOrderNgn;
+  const belowMinimumOrder = belowMinimumQuantity || belowMinimumAmount;
 
   const {
     promoError,
@@ -121,10 +134,27 @@ export default function CartScreen() {
       Alert.alert('Empty Cart', 'Your cart is empty. Add some items before checkout.');
       return;
     }
-    if (getTotalItems() < minimumOrderQuantity) {
+
+    // Re-check against live settings (bypassing the cache) rather than trust
+    // whatever was loaded when the cart screen mounted - an admin may have
+    // changed the minimums since then. checkout.tsx re-verifies this too
+    // (the actual payment gate), this just avoids sending someone there only
+    // to be blocked a screen later.
+    const liveConfig = await fetchCommerceConfig(true).catch(() => null);
+    const liveMinQty = liveConfig?.minimumOrderQuantity ?? minimumOrderQuantity;
+    const liveMinNgn = liveConfig?.minimumOrderNgn ?? minimumOrderNgn;
+
+    if (getTotalItems() < liveMinQty) {
       Alert.alert(
         'Minimum Order Not Met',
-        `We require at least ${minimumOrderQuantity} items per order. Add ${minimumOrderQuantity - getTotalItems()} more item${minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to continue.`
+        `We require at least ${liveMinQty} items per order. Add ${liveMinQty - getTotalItems()} more item${liveMinQty - getTotalItems() === 1 ? '' : 's'} to continue.`
+      );
+      return;
+    }
+    if (subtotalInNgn < liveMinNgn) {
+      Alert.alert(
+        'Minimum Order Not Met',
+        `We require a minimum order value of ${formatCurrency(liveMinNgn, 'NGN')}. Add ${formatCurrency(liveMinNgn - subtotalInNgn, 'NGN')} more to continue.`
       );
       return;
     }
@@ -221,15 +251,20 @@ export default function CartScreen() {
       </ScrollView>
 
       <View style={styles.checkoutSection}>
-        {getTotalItems() < minimumOrderQuantity && (
+        {belowMinimumQuantity && (
           <Text style={{ fontSize: 13, fontFamily: 'Inter-Medium', color: '#B45309', textAlign: 'center', marginBottom: 10 }}>
             Add {minimumOrderQuantity - getTotalItems()} more item{minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to meet our {minimumOrderQuantity}-item minimum order
           </Text>
         )}
+        {!belowMinimumQuantity && belowMinimumAmount && (
+          <Text style={{ fontSize: 13, fontFamily: 'Inter-Medium', color: '#B45309', textAlign: 'center', marginBottom: 10 }}>
+            Add {formatCurrency(minimumOrderNgn - subtotalInNgn, 'NGN')} more to meet our {formatCurrency(minimumOrderNgn, 'NGN')} minimum order
+          </Text>
+        )}
         <Pressable
-          style={[styles.checkoutButton, getTotalItems() < minimumOrderQuantity && { opacity: 0.5 }]}
+          style={[styles.checkoutButton, belowMinimumOrder && { opacity: 0.5 }]}
           onPress={handleCheckout}
-          disabled={getTotalItems() < minimumOrderQuantity}
+          disabled={belowMinimumOrder}
         >
           <Text style={styles.checkoutButtonText}>
             Proceed to Checkout

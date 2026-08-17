@@ -3,6 +3,7 @@ import { Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePostHog } from 'posthog-react-native';
 import { supabase } from '@/lib/supabase';
+import { fetchCommerceConfig } from '@/lib/commerceSettings';
 import { calculateOrderTotal, calculateCustomizationFeeTotal, type CommerceConfig } from '@/lib/fees';
 import { buildPayLink } from '@/lib/pay-links';
 import { convertFromNGN, formatCurrency } from '@/lib/currency';
@@ -74,15 +75,23 @@ export function usePaymentOrchestration({
 
   // Blocks checkout when the admin has closed the store or the cart is below the
   // configured minimum order. Returns true when a guard fired.
-  const checkoutBlocked = (): boolean => {
-    if (!config.storeOpen) {
-      showCheckoutNotice('Store Closed', config.storeClosedMessage);
+  //
+  // Re-fetches commerce config fresh (bypassing the 60s cache) instead of
+  // trusting the `config` prop, which was only fetched once when checkout.tsx
+  // mounted - if an admin changes the minimum order settings while a
+  // customer already has checkout open, the stale in-memory value would
+  // otherwise let a payment through that the new settings should block.
+  const checkoutBlocked = async (): Promise<boolean> => {
+    const liveConfig = await fetchCommerceConfig(true).catch(() => config);
+
+    if (!liveConfig.storeOpen) {
+      showCheckoutNotice('Store Closed', liveConfig.storeClosedMessage);
       return true;
     }
-    if (getSubtotalInNGN() < config.minimumOrderNgn) {
+    if (getSubtotalInNGN() < liveConfig.minimumOrderNgn) {
       const minInUserCurrency = userCurrency === 'NGN'
-        ? config.minimumOrderNgn
-        : convertFromNGN(config.minimumOrderNgn, userCurrency);
+        ? liveConfig.minimumOrderNgn
+        : convertFromNGN(liveConfig.minimumOrderNgn, userCurrency);
       showCheckoutNotice(
         'Minimum Order Not Met',
         `Orders must be at least ${formatCurrency(minInUserCurrency, userCurrency)}. Please add more items to continue.`
@@ -92,10 +101,10 @@ export function usePaymentOrchestration({
     // Safety net for the same rule enforced (and normally already caught) at
     // the cart screen - covers checkout being reached another way, e.g. a
     // saved link or the items being trimmed after arriving here.
-    if (getTotalItems() < config.minimumOrderQuantity) {
+    if (getTotalItems() < liveConfig.minimumOrderQuantity) {
       showCheckoutNotice(
         'Minimum Order Not Met',
-        `We require at least ${config.minimumOrderQuantity} items per order. Please add ${config.minimumOrderQuantity - getTotalItems()} more item${config.minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to continue.`
+        `We require at least ${liveConfig.minimumOrderQuantity} items per order. Please add ${liveConfig.minimumOrderQuantity - getTotalItems()} more item${liveConfig.minimumOrderQuantity - getTotalItems() === 1 ? '' : 's'} to continue.`
       );
       return true;
     }
@@ -103,7 +112,7 @@ export function usePaymentOrchestration({
   };
 
   const handlePayForMe = async () => {
-    if (checkoutBlocked()) return;
+    if (await checkoutBlocked()) return;
     if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
       showCheckoutNotice('Delivery Address Required', 'Please enter your delivery address, state, and country before generating a payment link.');
       return;
@@ -369,7 +378,7 @@ export function usePaymentOrchestration({
   };
 
   const handleOrder = async (paymentMethod: 'wallet' | 'card') => {
-    if (checkoutBlocked()) return;
+    if (await checkoutBlocked()) return;
     if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
       showCheckoutNotice(
         'Delivery Address Required',
