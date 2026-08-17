@@ -31,7 +31,7 @@ interface B2BPackage {
 
 const EMPTY_PRODUCT_FORM = {
   name: '', photoUrl: '', colors: '', sizes: '', fabricSpec: '',
-  minQty: '20', price20_49: '', price50_99: '', price100Plus: '', brandingNote: '',
+  minQty: '10', price20_49: '', price50_99: '', price100Plus: '', brandingNote: '',
 };
 const EMPTY_PACKAGE_FORM = { name: '', description: '', pricePerPerson: '' };
 
@@ -115,7 +115,7 @@ export default function AdminB2BCatalogScreen() {
         colors: productForm.colors.split(',').map((s) => s.trim()).filter(Boolean),
         sizes: productForm.sizes.split(',').map((s) => s.trim()).filter(Boolean),
         fabric_spec: productForm.fabricSpec.trim() || null,
-        min_qty: parseInt(productForm.minQty, 10) || 20,
+        min_qty: parseInt(productForm.minQty, 10) || 10,
         price_20_49: toIntOrNull(productForm.price20_49),
         price_50_99: toIntOrNull(productForm.price50_99),
         price_100_plus: toIntOrNull(productForm.price100Plus),
@@ -312,12 +312,12 @@ export default function AdminB2BCatalogScreen() {
             <TextInput style={styles.input} value={productForm.fabricSpec} onChangeText={(t) => setProductForm((p) => ({ ...p, fabricSpec: t }))} placeholder="e.g. 240gsm cotton pique" placeholderTextColor="#9CA3AF" />
 
             <Text style={styles.label}>Minimum Quantity</Text>
-            <TextInput style={styles.input} value={productForm.minQty} onChangeText={(t) => setProductForm((p) => ({ ...p, minQty: t.replace(/[^0-9]/g, '') }))} placeholder="20" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
+            <TextInput style={styles.input} value={productForm.minQty} onChangeText={(t) => setProductForm((p) => ({ ...p, minQty: t.replace(/[^0-9]/g, '') }))} placeholder="10" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
 
             <Text style={styles.label}>Price per piece (₦)</Text>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.subLabel}>20-49</Text>
+                <Text style={styles.subLabel}>10-49</Text>
                 <TextInput style={styles.input} value={productForm.price20_49} onChangeText={(t) => setProductForm((p) => ({ ...p, price20_49: t.replace(/[^0-9]/g, '') }))} placeholder="-" placeholderTextColor="#9CA3AF" keyboardType="number-pad" />
               </View>
               <View style={{ flex: 1 }}>

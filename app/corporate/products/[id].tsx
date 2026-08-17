@@ -36,7 +36,7 @@ export default function CorporateProductDetailScreen() {
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<B2BProduct | null>(null);
-  const [quantity, setQuantity] = useState(20);
+  const [quantity, setQuantity] = useState(10);
   const [added, setAdded] = useState(false);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function CorporateProductDetailScreen() {
       const { data } = await supabase.from('b2b_products').select('*').eq('id', id).single();
       const p = data as B2BProduct | null;
       setProduct(p);
-      if (p) setQuantity(p.min_qty || 20);
+      if (p) setQuantity(p.min_qty || 10);
       setLoading(false);
     })();
   }, [id]);
@@ -127,7 +127,7 @@ export default function CorporateProductDetailScreen() {
 
             <Text style={styles.priceTitle}>Price Tiers</Text>
             <View style={styles.priceLadder}>
-              <View style={styles.priceRow}><Text style={styles.priceRange}>20-49</Text><Text style={styles.priceValue}>{formatNaira(product.price_20_49)} / piece</Text></View>
+              <View style={styles.priceRow}><Text style={styles.priceRange}>10-49</Text><Text style={styles.priceValue}>{formatNaira(product.price_20_49)} / piece</Text></View>
               <View style={styles.priceRow}><Text style={styles.priceRange}>50-99</Text><Text style={styles.priceValue}>{formatNaira(product.price_50_99)} / piece</Text></View>
               <View style={styles.priceRow}><Text style={styles.priceRange}>100+</Text><Text style={styles.priceValue}>{formatNaira(product.price_100_plus)} / piece</Text></View>
             </View>

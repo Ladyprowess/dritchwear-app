@@ -16,7 +16,7 @@ import { useQuoteBasket } from '@/contexts/QuoteBasketContext';
 
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
-const QUANTITY_OPTIONS = ['20 - 50', '50 - 100', '100+'];
+const QUANTITY_OPTIONS = ['10 - 50', '50 - 100', '100+'];
 const BRANDING_OPTIONS = ['Screen Print', 'Embroidery', 'Not sure yet'];
 
 export default function CorporateQuoteScreen() {

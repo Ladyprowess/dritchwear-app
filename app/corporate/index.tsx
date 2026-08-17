@@ -13,7 +13,7 @@ import { useQuoteBasket } from '@/contexts/QuoteBasketContext';
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
 const WHY_DRITCHWEAR = [
-  '20-piece minimum, no smaller runs',
+  '10-piece minimum',
   'Volume pricing that drops as quantity grows',
   'Screen printing & embroidery in-house',
   'Logo/specification review before production',
@@ -87,14 +87,14 @@ export default function CorporateHubScreen() {
             <Text style={[styles.heroSub, isDesktop && styles.heroSubDesktop]}>
               Premium apparel and branded merchandise for companies, tech teams and events - produced to your specifications, with clear pricing, volume discounts, and reliable lead times.
             </Text>
-            <Text style={styles.heroMoq}>Minimum order: 20 pieces</Text>
+            <Text style={styles.heroMoq}>Minimum order: 10 pieces</Text>
           </View>
 
           {isDesktop && (
             <View style={styles.heroFactsCard}>
               <Text style={styles.heroFactsTitle}>At a glance</Text>
               {[
-                ['Minimum order', '20 pieces'],
+                ['Minimum order', '10 pieces'],
                 ['Branding', 'Screen print & embroidery'],
                 ['Lead time', 'Fixed, confirmed at quote'],
                 ['Tracking', 'Live order status'],
