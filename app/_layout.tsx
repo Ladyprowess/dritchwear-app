@@ -27,6 +27,7 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { PointsProvider } from '@/contexts/PointsContext';
+import { QuoteBasketProvider } from '@/contexts/QuoteBasketContext';
 
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import WebInstallBanner from '@/components/WebInstallBanner';
@@ -357,7 +358,8 @@ function RootLayoutContent() {
         const isPublicStandaloneRoute =
           currentPath === '/pay' || currentPath.startsWith('/pay/') ||
           webPath === '/pay' || webPath.startsWith('/pay/') ||
-          currentPath === '/corporate' || webPath === '/corporate' ||
+          currentPath === '/corporate' || currentPath.startsWith('/corporate/') ||
+          webPath === '/corporate' || webPath.startsWith('/corporate/') ||
           currentPath === '/portfolio' || webPath === '/portfolio';
 
         // Keep standalone public routes mounted instead of forcing them through
@@ -526,7 +528,9 @@ export default function RootLayout() {
           <AuthProvider>
             <CartProvider>
               <PointsProvider>
-                <RootLayoutContent />
+                <QuoteBasketProvider>
+                  <RootLayoutContent />
+                </QuoteBasketProvider>
               </PointsProvider>
             </CartProvider>
           </AuthProvider>

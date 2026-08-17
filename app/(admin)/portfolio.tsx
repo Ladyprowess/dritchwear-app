@@ -18,6 +18,13 @@ const CATEGORIES: { value: string; label: string }[] = [
   { value: 'streetwear', label: 'Streetwear Drops' },
 ];
 
+const BRANDING_METHODS: { value: string; label: string }[] = [
+  { value: '', label: 'Not set' },
+  { value: 'Screen printed', label: 'Screen printed' },
+  { value: 'Embroidered', label: 'Embroidered' },
+  { value: 'Embroidered + screen printed', label: 'Both' },
+];
+
 interface PortfolioItem {
   id: string;
   title: string;
@@ -27,9 +34,14 @@ interface PortfolioItem {
   media_urls: UploadedMedia[];
   is_featured: boolean;
   created_at: string;
+  products_summary: string | null;
+  branding_method: string | null;
 }
 
-const EMPTY_FORM = { title: '', category: 'corporate', client_name: '', description: '', isFeatured: false };
+const EMPTY_FORM = {
+  title: '', category: 'corporate', client_name: '', description: '', isFeatured: false,
+  productsSummary: '', brandingMethod: '',
+};
 
 export default function AdminPortfolioScreen() {
   const router = useRouter();
@@ -70,6 +82,8 @@ export default function AdminPortfolioScreen() {
       client_name: item.client_name || '',
       description: item.description || '',
       isFeatured: item.is_featured,
+      productsSummary: item.products_summary || '',
+      brandingMethod: item.branding_method || '',
     });
     setMedia(item.media_urls);
     setShowModal(true);
@@ -122,6 +136,8 @@ export default function AdminPortfolioScreen() {
         description: form.description.trim() || null,
         media_urls: media,
         is_featured: form.isFeatured,
+        products_summary: form.productsSummary.trim() || null,
+        branding_method: form.brandingMethod || null,
       };
       const { error } = editingId
         ? await supabase.from('portfolio_items').update(payload).eq('id', editingId)
@@ -196,6 +212,7 @@ export default function AdminPortfolioScreen() {
                 {CATEGORIES.find((c) => c.value === item.category)?.label || item.category}
                 {item.client_name ? ` · ${item.client_name}` : ''}
               </Text>
+              {item.products_summary ? <Text style={styles.cardMeta}>{item.products_summary}</Text> : null}
               <Text style={styles.cardMeta}>{item.media_urls.length} file{item.media_urls.length === 1 ? '' : 's'}</Text>
             </View>
             <Pressable style={styles.deleteBtn} onPress={() => handleDelete(item)} hitSlop={4}>
@@ -234,7 +251,23 @@ export default function AdminPortfolioScreen() {
             </View>
 
             <Text style={styles.label}>Client Name</Text>
-            <TextInput style={styles.input} value={form.client_name} onChangeText={(t) => setForm((p) => ({ ...p, client_name: t }))} placeholder="e.g. Paystack" placeholderTextColor="#9CA3AF" />
+            <TextInput style={styles.input} value={form.client_name} onChangeText={(t) => setForm((p) => ({ ...p, client_name: t }))} placeholder="e.g. Paystack (leave blank to keep anonymous)" placeholderTextColor="#9CA3AF" />
+
+            <Text style={styles.label}>What Was Produced</Text>
+            <TextInput style={styles.input} value={form.productsSummary} onChangeText={(t) => setForm((p) => ({ ...p, productsSummary: t }))} placeholder="e.g. 150 heavyweight tees + 150 tote bags" placeholderTextColor="#9CA3AF" />
+
+            <Text style={styles.label}>Branding Method</Text>
+            <View style={styles.chipRow}>
+              {BRANDING_METHODS.map((m) => (
+                <Pressable
+                  key={m.value}
+                  style={[styles.chip, form.brandingMethod === m.value && styles.chipActive]}
+                  onPress={() => setForm((p) => ({ ...p, brandingMethod: m.value }))}
+                >
+                  <Text style={[styles.chipText, form.brandingMethod === m.value && styles.chipTextActive]}>{m.label}</Text>
+                </Pressable>
+              ))}
+            </View>
 
             <Text style={styles.label}>Description</Text>
             <RichTextEditor

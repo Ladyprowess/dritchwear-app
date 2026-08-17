@@ -30,6 +30,8 @@ interface PortfolioItem {
   description: string | null;
   client_name: string | null;
   media_urls: UploadedMedia[];
+  products_summary: string | null;
+  branding_method: string | null;
 }
 
 function VideoTile({ uri }: { uri: string }) {
@@ -162,7 +164,11 @@ export default function PortfolioScreen() {
                 )}
               </View>
               <Text style={styles.cardTitle} numberOfLines={2}>{item.title}</Text>
-              {item.client_name && <Text style={styles.cardClient} numberOfLines={1}>{item.client_name}</Text>}
+              {item.products_summary ? (
+                <Text style={styles.cardSummary} numberOfLines={2}>{item.products_summary}</Text>
+              ) : item.client_name ? (
+                <Text style={styles.cardClient} numberOfLines={1}>{item.client_name}</Text>
+              ) : null}
             </Pressable>
           )}
         />
@@ -201,12 +207,17 @@ export default function PortfolioScreen() {
             <View style={styles.lightboxInfo}>
               <Text style={styles.lightboxTitle}>{lightboxItem.title}</Text>
               {lightboxItem.client_name && <Text style={styles.lightboxClient}>{lightboxItem.client_name}</Text>}
+              {lightboxItem.products_summary && <Text style={styles.lightboxSummary}>{lightboxItem.products_summary}</Text>}
+              {lightboxItem.branding_method && <Text style={styles.lightboxBrandingMethod}>{lightboxItem.branding_method}</Text>}
               {lightboxItem.description && (
                 <RichTextView html={lightboxItem.description} color="#D1D5DB" fontSize={13} textAlign="center" />
               )}
               {lightboxItem.media_urls.length > 1 && (
                 <Text style={styles.lightboxCount}>{mediaIndex + 1} / {lightboxItem.media_urls.length}</Text>
               )}
+              <Pressable style={styles.buildQuoteBtn} onPress={() => { closeLightbox(); router.push('/corporate/quote' as any); }}>
+                <Text style={styles.buildQuoteBtnText}>Need something similar? Build Your Quote →</Text>
+              </Pressable>
             </View>
           )}
         </View>
@@ -254,6 +265,7 @@ const styles = StyleSheet.create({
   countBadgeText: { color: '#FFF', fontSize: 11, fontFamily: 'Inter-Bold' },
   cardTitle: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#1F2937', marginTop: 8, lineHeight: 18 },
   cardClient: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 2 },
+  cardSummary: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 2, lineHeight: 15 },
 
   lightboxBackdrop: { flex: 1, backgroundColor: 'rgba(10,6,16,0.94)', justifyContent: 'center' },
   lightboxClose: { position: 'absolute', top: 50, right: 20, zIndex: 10, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
@@ -265,6 +277,10 @@ const styles = StyleSheet.create({
   lightboxInfo: { paddingHorizontal: 24, paddingTop: 16 },
   lightboxTitle: { fontSize: 16, fontFamily: 'Inter-Bold', color: '#FFFFFF', textAlign: 'center' },
   lightboxClient: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: BRAND.gold, textAlign: 'center', marginTop: 4 },
+  lightboxSummary: { fontSize: 13, fontFamily: 'Inter-SemiBold', color: '#FFFFFF', textAlign: 'center', marginTop: 6 },
+  lightboxBrandingMethod: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#9CA3AF', textAlign: 'center', marginTop: 2 },
   lightboxDesc: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#D1D5DB', textAlign: 'center', marginTop: 8, lineHeight: 19 },
   lightboxCount: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#9CA3AF', textAlign: 'center', marginTop: 10 },
+  buildQuoteBtn: { alignItems: 'center', marginTop: 18, paddingVertical: 10 },
+  buildQuoteBtnText: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: BRAND.gold },
 });
