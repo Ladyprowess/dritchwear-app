@@ -143,10 +143,10 @@ export default function AdminSettingsScreen() {
     },
     {
       icon: Tag,
-      title: 'B2B Pricing',
-      subtitle: 'Price tiers shown on the public B2B pricing page',
+      title: 'B2B Catalogue',
+      subtitle: 'Products, pricing & event packages on the corporate page',
       color: '#F59E0B',
-      onPress: () => router.push('/(admin)/b2b-pricing' as any),
+      onPress: () => router.push('/(admin)/b2b-catalog' as any),
     },
   ];
 

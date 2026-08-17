@@ -51,6 +51,7 @@ Deno.serve(async (req: Request) => {
     ['Phone', quote.phone || '-'],
     ['Product interest', quote.product_interest || '-'],
     ['Estimated quantity', quote.estimated_quantity],
+    ['Branding type', quote.branding_type || '-'],
     ['Needed by', quote.needed_by || '-'],
   ];
   const factsHtml = facts.map(([label, value]) =>

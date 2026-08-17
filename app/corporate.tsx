@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
   TextInput, Alert, ActivityIndicator, Platform, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Briefcase, CheckCircle, ImagePlus, X } from 'lucide-react-native';
+import {
+  ArrowLeft, Briefcase, CheckCircle, ImagePlus, X, Package,
+  ClipboardList, Search, FileCheck, Factory, Truck, ShieldCheck,
+} from 'lucide-react-native';
 import * as Crypto from 'expo-crypto';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -15,17 +18,68 @@ import { smartBack } from '@/lib/navigation';
 const BRAND = { purple: '#5A2D82', gold: '#FDB813' };
 
 const QUANTITY_OPTIONS = ['20 - 50', '50 - 100', '100+'];
+const BRANDING_OPTIONS = ['Screen Print', 'Embroidery', 'Not sure yet'];
 
-const CATALOG_ITEMS = [
-  { name: 'Premium Heavyweight Tee', blurb: 'Custom-printed or embroidered' },
-  { name: 'Custom Hoodie', blurb: 'Screen print or embroidery' },
-  { name: 'Branded Cap', blurb: 'Embroidered logo' },
-  { name: 'Tote Bag', blurb: 'Great for onboarding kits' },
+const WHY_DRITCHWEAR = [
+  '20-piece minimum, no smaller runs',
+  'Volume pricing that drops as quantity grows',
+  'Screen printing & embroidery in-house',
+  'Logo/specification review before production',
+  'Fixed production lead times',
+  'Live order tracking',
+  'Dedicated corporate/event support',
+  'A real portfolio of past projects',
 ];
+
+const PROCESS_STEPS = [
+  { n: '01', icon: ClipboardList, title: 'Tell us what you need', body: 'Products, quantity, branding and deadline.' },
+  { n: '02', icon: Search, title: 'We review your specifications', body: 'Upload your logo and requirements.' },
+  { n: '03', icon: FileCheck, title: 'Receive your quote', body: 'We confirm volume pricing and production lead time.' },
+  { n: '04', icon: Factory, title: 'Approve production', body: 'We produce and prepare your order.' },
+  { n: '05', icon: Truck, title: 'Receive your merchandise', body: 'Delivery coordinated around your deadline.' },
+];
+
+interface B2BProduct {
+  id: string;
+  name: string;
+  photo_url: string | null;
+  colors: string[];
+  sizes: string[];
+  fabric_spec: string | null;
+  min_qty: number;
+  price_20_49: number | null;
+  price_50_99: number | null;
+  price_100_plus: number | null;
+  branding_note: string | null;
+}
+
+interface B2BPackage {
+  id: string;
+  name: string;
+  description: string | null;
+  price_per_person: number | null;
+}
+
+interface PastWorkItem {
+  id: string;
+  title: string;
+  client_name: string | null;
+  media_urls: { url: string; type: 'image' | 'video'; posterUrl?: string }[];
+}
+
+function formatNaira(n: number | null): string {
+  return n == null ? '-' : `₦${n.toLocaleString('en-NG')}`;
+}
 
 export default function CorporateScreen() {
   const { user } = useAuth();
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionY = useRef<Record<string, number>>({});
+
+  const [products, setProducts] = useState<B2BProduct[]>([]);
+  const [packages, setPackages] = useState<B2BPackage[]>([]);
+  const [pastWork, setPastWork] = useState<PastWorkItem[]>([]);
 
   const [companyName, setCompanyName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -33,12 +87,32 @@ export default function CorporateScreen() {
   const [phone, setPhone] = useState('');
   const [productInterest, setProductInterest] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [brandingType, setBrandingType] = useState('');
   const [neededBy, setNeededBy] = useState('');
   const [notes, setNotes] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const [{ data: p }, { data: pk }, { data: pw }] = await Promise.all([
+        supabase.from('b2b_products').select('*').order('sort_order', { ascending: true }),
+        supabase.from('b2b_packages').select('*').order('sort_order', { ascending: true }),
+        supabase.from('portfolio_items').select('id, title, client_name, media_urls')
+          .order('is_featured', { ascending: false }).order('created_at', { ascending: false }).limit(4),
+      ]);
+      setProducts((p || []) as B2BProduct[]);
+      setPackages((pk || []) as B2BPackage[]);
+      setPastWork((pw || []) as PastWorkItem[]);
+    })();
+  }, []);
+
+  const scrollToSection = (key: string) => {
+    const y = sectionY.current[key];
+    if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+  };
 
   const uploadLogo = async () => {
     setUploadingLogo(true);
@@ -80,6 +154,7 @@ export default function CorporateScreen() {
           phone: phone.trim() || null,
           product_interest: productInterest.trim() || null,
           estimated_quantity: quantity,
+          branding_type: brandingType || null,
           needed_by: neededBy.trim() || null,
           logo_url: logoUrl,
           notes: notes.trim() || null,
@@ -133,33 +208,139 @@ export default function CorporateScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Dritchwear for Business</Text>
-            <Text style={styles.headerSub}>Bulk & corporate branded merch</Text>
+            <Text style={styles.headerSub}>Corporate & event merchandise</Text>
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.intro}>
-            High-quality branded apparel for team onboarding, events, and conferences - handled with fixed lead times and volume pricing. Minimum order 20 pieces.
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Hero */}
+          <Text style={styles.heroTitle}>Branded Merchandise for Teams, Companies & Events</Text>
+          <Text style={styles.heroSub}>
+            Premium apparel and branded merchandise for companies, tech teams and events - produced to your specifications, with clear pricing, volume discounts, and reliable lead times.
           </Text>
+          <Text style={styles.heroMoq}>Minimum order: 20 pieces</Text>
+          <Text style={styles.heroEyebrow}>T-shirts · Hoodies · Caps · Tote Bags</Text>
 
-          <View style={styles.catalogRow}>
-            {CATALOG_ITEMS.map((item) => (
-              <View key={item.name} style={styles.catalogCard}>
-                <Text style={styles.catalogName}>{item.name}</Text>
-                <Text style={styles.catalogBlurb}>{item.blurb}</Text>
+          <View style={styles.heroActions}>
+            <Pressable style={styles.heroPrimaryBtn} onPress={() => scrollToSection('products')}>
+              <Text style={styles.heroPrimaryBtnText}>View Products & Prices</Text>
+            </Pressable>
+            <Pressable style={styles.heroSecondaryBtn} onPress={() => scrollToSection('quote')}>
+              <Text style={styles.heroSecondaryBtnText}>Request a Quote</Text>
+            </Pressable>
+          </View>
+
+          {/* Products & Pricing */}
+          <View onLayout={(e) => { sectionY.current.products = e.nativeEvent.layout.y; }}>
+            <Text style={styles.sectionTitle}>Products & Pricing</Text>
+            <Text style={styles.sectionSub}>Garment prices below. Branding (logo/print) is quoted separately based on complexity - see the note on each product.</Text>
+
+            {products.length === 0 ? (
+              <Text style={styles.emptySection}>Our full price list is being finalised - request a quote below and we'll send pricing directly.</Text>
+            ) : products.map((item) => (
+              <View key={item.id} style={styles.productCard}>
+                {item.photo_url && <Image source={{ uri: item.photo_url }} style={styles.productPhoto} resizeMode="cover" />}
+                <View style={styles.productBody}>
+                  <Text style={styles.productName}>{item.name}</Text>
+                  {(item.colors.length > 0 || item.sizes.length > 0) && (
+                    <Text style={styles.productSpec}>
+                      {item.colors.length > 0 ? item.colors.join(', ') : ''}
+                      {item.colors.length > 0 && item.sizes.length > 0 ? ' · ' : ''}
+                      {item.sizes.length > 0 ? `Sizes ${item.sizes.join(', ')}` : ''}
+                    </Text>
+                  )}
+                  {item.fabric_spec ? <Text style={styles.productSpec}>{item.fabric_spec}</Text> : null}
+                  <Text style={styles.productMoq}>Min {item.min_qty} pieces</Text>
+
+                  <View style={styles.priceLadder}>
+                    <View style={styles.priceRow}><Text style={styles.priceRange}>20-49</Text><Text style={styles.priceValue}>{formatNaira(item.price_20_49)}</Text></View>
+                    <View style={styles.priceRow}><Text style={styles.priceRange}>50-99</Text><Text style={styles.priceValue}>{formatNaira(item.price_50_99)}</Text></View>
+                    <View style={styles.priceRow}><Text style={styles.priceRange}>100+</Text><Text style={styles.priceValue}>{formatNaira(item.price_100_plus)}</Text></View>
+                  </View>
+
+                  {item.branding_note ? <Text style={styles.brandingNote}>* {item.branding_note}</Text> : null}
+                </View>
+              </View>
+            ))}
+
+            <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
+              <Text style={styles.portfolioLinkText}>See Examples of Our Past Work →</Text>
+            </Pressable>
+          </View>
+
+          {/* Event Packages */}
+          {packages.length > 0 && (
+            <View>
+              <Text style={styles.sectionTitle}>Event Packages</Text>
+              <Text style={styles.sectionSub}>Bundled sets priced per person - easier to budget for a full attendee list.</Text>
+              {packages.map((pkg) => (
+                <View key={pkg.id} style={styles.packageCard}>
+                  <View style={styles.packageIcon}><Package size={18} color={BRAND.purple} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.packageName}>{pkg.name}</Text>
+                    {pkg.description ? <Text style={styles.packageDesc}>{pkg.description}</Text> : null}
+                  </View>
+                  <Text style={styles.packagePrice}>{formatNaira(pkg.price_per_person)}<Text style={styles.packagePriceUnit}>/person</Text></Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Process */}
+          <Text style={styles.sectionTitle}>Our Process</Text>
+          {PROCESS_STEPS.map((step) => (
+            <View key={step.n} style={styles.stepRow}>
+              <View style={styles.stepIconWrap}>
+                <step.icon size={16} color={BRAND.purple} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stepTitle}>{step.n} — {step.title}</Text>
+                <Text style={styles.stepBody}>{step.body}</Text>
+              </View>
+            </View>
+          ))}
+
+          {/* Why Dritchwear */}
+          <Text style={styles.sectionTitle}>Why Dritchwear</Text>
+          <Text style={styles.sectionSub}>Built for real business orders.</Text>
+          <View style={styles.whyGrid}>
+            {WHY_DRITCHWEAR.map((point) => (
+              <View key={point} style={styles.whyRow}>
+                <ShieldCheck size={14} color={BRAND.gold} />
+                <Text style={styles.whyText}>{point}</Text>
               </View>
             ))}
           </View>
 
-          <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
-            <Text style={styles.portfolioLinkText}>See Examples of Our Past Work →</Text>
-          </Pressable>
+          {/* Past work */}
+          {pastWork.length > 0 && (
+            <View>
+              <Text style={styles.sectionTitle}>Past Work</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -20 }} contentContainerStyle={styles.pastWorkRow}>
+                {pastWork.map((item) => {
+                  const thumb = item.media_urls?.[0];
+                  const thumbUri = thumb?.type === 'image' ? thumb.url : thumb?.posterUrl;
+                  return (
+                    <Pressable key={item.id} style={styles.pastWorkCard} onPress={() => router.push('/portfolio' as any)}>
+                      {thumbUri ? (
+                        <Image source={{ uri: thumbUri }} style={styles.pastWorkPhoto} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.pastWorkPhoto, styles.pastWorkPhotoPlaceholder]} />
+                      )}
+                      <Text style={styles.pastWorkTitle} numberOfLines={2}>{item.title}</Text>
+                      {item.client_name ? <Text style={styles.pastWorkClient}>{item.client_name}</Text> : null}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <Pressable style={styles.portfolioLink} onPress={() => router.push('/portfolio' as any)}>
+                <Text style={styles.portfolioLinkText}>See All Past Work →</Text>
+              </Pressable>
+            </View>
+          )}
 
-          <Pressable style={styles.portfolioLink} onPress={() => router.push('/b2b-pricing' as any)}>
-            <Text style={styles.portfolioLinkText}>See Pricing →</Text>
-          </Pressable>
-
-          <View style={styles.card}>
+          {/* Quote form */}
+          <View onLayout={(e) => { sectionY.current.quote = e.nativeEvent.layout.y; }} style={styles.card}>
             <Text style={styles.cardTitle}>Request a Quote</Text>
 
             <Text style={styles.label}>Company Name *</Text>
@@ -190,6 +371,19 @@ export default function CorporateScreen() {
               ))}
             </View>
 
+            <Text style={styles.label}>Branding Type</Text>
+            <View style={styles.chipRow}>
+              {BRANDING_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt}
+                  style={[styles.chip, brandingType === opt && styles.chipActive]}
+                  onPress={() => setBrandingType(opt)}
+                >
+                  <Text style={[styles.chipText, brandingType === opt && styles.chipTextActive]}>{opt}</Text>
+                </Pressable>
+              ))}
+            </View>
+
             <Text style={styles.label}>Needed By</Text>
             <TextInput style={styles.input} value={neededBy} onChangeText={setNeededBy} placeholder="e.g. December 2026" placeholderTextColor="#9CA3AF" />
 
@@ -208,7 +402,7 @@ export default function CorporateScreen() {
               </Pressable>
             )}
 
-            <Text style={styles.label}>Notes</Text>
+            <Text style={styles.label}>Additional Requirements</Text>
             <TextInput
               style={[styles.input, styles.multiline]}
               value={notes}
@@ -225,7 +419,7 @@ export default function CorporateScreen() {
               onPress={handleSubmit}
               disabled={submitting}
             >
-              {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Request Quote</Text>}
+              {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Get My Quote</Text>}
             </Pressable>
           </View>
         </ScrollView>
@@ -253,20 +447,61 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', marginTop: 2 },
 
   content: { padding: 20, paddingBottom: 48 },
-  intro: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 21, marginBottom: 20 },
 
-  catalogRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  portfolioLink: { alignItems: 'center', paddingVertical: 10, marginBottom: 24 },
+  heroTitle: { fontSize: 24, fontFamily: 'Inter-Bold', color: '#17131C', lineHeight: 31, marginBottom: 10 },
+  heroSub: { fontSize: 14, fontFamily: 'Inter-Regular', color: '#4B5563', lineHeight: 21, marginBottom: 12 },
+  heroMoq: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: BRAND.purple, marginBottom: 6 },
+  heroEyebrow: { fontSize: 12.5, fontFamily: 'Inter-SemiBold', color: '#9CA3AF', marginBottom: 18 },
+  heroActions: { flexDirection: 'row', gap: 10, marginBottom: 32 },
+  heroPrimaryBtn: { flex: 1, backgroundColor: BRAND.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  heroPrimaryBtnText: { color: '#FFF', fontSize: 13.5, fontFamily: 'Inter-Bold' },
+  heroSecondaryBtn: { flex: 1, backgroundColor: '#FFF', borderWidth: 1.5, borderColor: BRAND.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  heroSecondaryBtnText: { color: BRAND.purple, fontSize: 13.5, fontFamily: 'Inter-Bold' },
+
+  sectionTitle: { fontSize: 18, fontFamily: 'Inter-Bold', color: '#17131C', marginTop: 8, marginBottom: 6 },
+  sectionSub: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#6B7280', lineHeight: 19, marginBottom: 16 },
+  emptySection: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 19, marginBottom: 16 },
+
+  productCard: { flexDirection: 'row', gap: 12, backgroundColor: '#FFF', borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#EDE9F6' },
+  productPhoto: { width: 76, height: 76, borderRadius: 12, backgroundColor: '#F3F4F6' },
+  productBody: { flex: 1 },
+  productName: { fontSize: 14.5, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 3 },
+  productSpec: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 16 },
+  productMoq: { fontSize: 11.5, fontFamily: 'Inter-SemiBold', color: BRAND.purple, marginTop: 4, marginBottom: 8 },
+  priceLadder: { flexDirection: 'row', gap: 14 },
+  priceRow: { alignItems: 'flex-start' },
+  priceRange: { fontSize: 10.5, fontFamily: 'Inter-Regular', color: '#9CA3AF' },
+  priceValue: { fontSize: 13, fontFamily: 'Inter-Bold', color: '#17131C', marginTop: 1 },
+  brandingNote: { fontSize: 11, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 8, lineHeight: 15 },
+
+  portfolioLink: { alignItems: 'center', paddingVertical: 10, marginBottom: 8 },
   portfolioLinkText: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
-  catalogCard: {
-    width: '47%', backgroundColor: '#FFF', borderRadius: 14, padding: 14,
-    borderWidth: 1, borderColor: '#EDE9F6',
-  },
-  catalogName: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 3 },
-  catalogBlurb: { fontSize: 11.5, fontFamily: 'Inter-Regular', color: '#9CA3AF', lineHeight: 16 },
+
+  packageCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#EDE9F6' },
+  packageIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
+  packageName: { fontSize: 14, fontFamily: 'Inter-Bold', color: '#1F2937' },
+  packageDesc: { fontSize: 12, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 2 },
+  packagePrice: { fontSize: 14, fontFamily: 'Inter-Bold', color: BRAND.purple },
+  packagePriceUnit: { fontSize: 10.5, fontFamily: 'Inter-Regular', color: '#9CA3AF' },
+
+  stepRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  stepIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3F0F8', alignItems: 'center', justifyContent: 'center' },
+  stepTitle: { fontSize: 13.5, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 2 },
+  stepBody: { fontSize: 12.5, fontFamily: 'Inter-Regular', color: '#6B7280', lineHeight: 18 },
+
+  whyGrid: { gap: 10, marginBottom: 8 },
+  whyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  whyText: { fontSize: 13, fontFamily: 'Inter-Regular', color: '#374151' },
+
+  pastWorkRow: { paddingHorizontal: 20, gap: 12 },
+  pastWorkCard: { width: 130 },
+  pastWorkPhoto: { width: 130, height: 130, borderRadius: 12, backgroundColor: '#F3F4F6' },
+  pastWorkPhotoPlaceholder: { backgroundColor: '#374151' },
+  pastWorkTitle: { fontSize: 12.5, fontFamily: 'Inter-SemiBold', color: '#1F2937', marginTop: 6, lineHeight: 16 },
+  pastWorkClient: { fontSize: 11, fontFamily: 'Inter-Regular', color: '#9CA3AF', marginTop: 1 },
 
   card: {
-    backgroundColor: '#FFF', borderRadius: 16, padding: 20,
+    backgroundColor: '#FFF', borderRadius: 16, padding: 20, marginTop: 24,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2,
   },
   cardTitle: { fontSize: 17, fontFamily: 'Inter-Bold', color: '#1F2937', marginBottom: 16 },

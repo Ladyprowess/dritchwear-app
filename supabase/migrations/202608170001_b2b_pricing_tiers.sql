@@ -1,37 +1,60 @@
--- B2B pricing tiers: admin-managed price table + calculator data for the
--- public /b2b-pricing page. Each row is one quantity band for one product
--- (+ optional print method, since embroidery vs screen print often differ).
-CREATE TABLE IF NOT EXISTS public.b2b_pricing_tiers (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_name TEXT NOT NULL,
-  print_method TEXT CHECK (print_method IN ('screen_print', 'embroidery')),
-  min_qty      INTEGER NOT NULL CHECK (min_qty > 0),
-  max_qty      INTEGER CHECK (max_qty IS NULL OR max_qty >= min_qty),
-  unit_price   INTEGER NOT NULL CHECK (unit_price >= 0), -- NGN, whole naira
-  sort_order   INTEGER NOT NULL DEFAULT 0,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- B2B catalogue: products (with tiered pricing) + event packages, shown on
+-- the /corporate landing page. Admin-managed via /(admin)/b2b-catalog.
+-- Product photos reuse the existing 'portfolio-media' bucket (prefix
+-- 'b2b-products/') so no new storage bucket/policies are needed.
+
+CREATE TABLE IF NOT EXISTS public.b2b_products (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name          TEXT NOT NULL,
+  photo_url     TEXT,
+  colors        TEXT[] NOT NULL DEFAULT '{}',
+  sizes         TEXT[] NOT NULL DEFAULT '{}',
+  fabric_spec   TEXT,
+  min_qty       INTEGER NOT NULL DEFAULT 20,
+  price_20_49   INTEGER,
+  price_50_99   INTEGER,
+  price_100_plus INTEGER,
+  branding_note TEXT,
+  sort_order    INTEGER NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_b2b_pricing_tiers_product ON public.b2b_pricing_tiers (product_name, sort_order);
+CREATE TABLE IF NOT EXISTS public.b2b_packages (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name             TEXT NOT NULL,
+  description      TEXT,
+  price_per_person INTEGER,
+  sort_order       INTEGER NOT NULL DEFAULT 0,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-ALTER TABLE public.b2b_pricing_tiers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quote_requests ADD COLUMN IF NOT EXISTS branding_type TEXT;
 
-CREATE POLICY "b2b pricing public read" ON public.b2b_pricing_tiers
-  FOR SELECT TO anon, authenticated
-  USING (true);
+CREATE INDEX IF NOT EXISTS idx_b2b_products_sort ON public.b2b_products (sort_order);
+CREATE INDEX IF NOT EXISTS idx_b2b_packages_sort ON public.b2b_packages (sort_order);
 
-CREATE POLICY "b2b pricing admin insert" ON public.b2b_pricing_tiers
-  FOR INSERT TO authenticated
+ALTER TABLE public.b2b_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.b2b_packages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "b2b products public read" ON public.b2b_products FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "b2b products admin insert" ON public.b2b_products FOR INSERT TO authenticated
   WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
-
-CREATE POLICY "b2b pricing admin update" ON public.b2b_pricing_tiers
-  FOR UPDATE TO authenticated
+CREATE POLICY "b2b products admin update" ON public.b2b_products FOR UPDATE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'))
   WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
-
-CREATE POLICY "b2b pricing admin delete" ON public.b2b_pricing_tiers
-  FOR DELETE TO authenticated
+CREATE POLICY "b2b products admin delete" ON public.b2b_products FOR DELETE TO authenticated
   USING (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
 
-GRANT SELECT ON public.b2b_pricing_tiers TO anon, authenticated;
-GRANT INSERT, UPDATE, DELETE ON public.b2b_pricing_tiers TO authenticated;
+CREATE POLICY "b2b packages public read" ON public.b2b_packages FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY "b2b packages admin insert" ON public.b2b_packages FOR INSERT TO authenticated
+  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+CREATE POLICY "b2b packages admin update" ON public.b2b_packages FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+CREATE POLICY "b2b packages admin delete" ON public.b2b_packages FOR DELETE TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.role = 'admin'));
+
+GRANT SELECT ON public.b2b_products TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.b2b_products TO authenticated;
+GRANT SELECT ON public.b2b_packages TO anon, authenticated;
+GRANT INSERT, UPDATE, DELETE ON public.b2b_packages TO authenticated;

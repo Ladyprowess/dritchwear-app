@@ -141,7 +141,7 @@ export default function AdminLayout() {
       <Tabs.Screen name="store-settings" options={{ href: null }} />
       <Tabs.Screen name="category-images" options={{ href: null }} />
       <Tabs.Screen name="portfolio"       options={{ href: null }} />
-      <Tabs.Screen name="b2b-pricing"     options={{ href: null }} />
+      <Tabs.Screen name="b2b-catalog"     options={{ href: null }} />
       </Tabs>
       </View>
       {liveAlert && (
