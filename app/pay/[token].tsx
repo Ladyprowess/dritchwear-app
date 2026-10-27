@@ -55,6 +55,8 @@ export default function PayLinkGateway() {
       amount: Math.round((linkData?.amount_ngn ?? 0)) * 100, // whole kobo, no fraction
       currency: 'NGN',
       ref: 'dw_' + Date.now() + '_' + Math.floor(Math.random() * 1e6),
+      // Binds the charge to this link (checked server-side in confirmPaymentLink).
+      metadata: { custom_fields: [{ display_name: 'Order Token', variable_name: 'token', value: String(token) }] },
       callback: (response: any) => {
         setProcessing(false);
         handlePaystackSuccess(response);
@@ -290,6 +292,7 @@ export default function PayLinkGateway() {
               amount={amountNGN}
               publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
               customerName={payerEmail}
+              orderId={String(token)}
               onSuccess={handlePaystackSuccess}
               onCancel={handlePaystackCancel}
             />

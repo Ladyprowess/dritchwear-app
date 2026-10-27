@@ -22,12 +22,7 @@
 -- functions and the app update are live, because this blocks the direct
 -- writes older app builds still make. Uses the caller helpers from part 1.
 
--- ── 1. Legacy wallet trigger ────────────────────────────────────────────────
--- From the very first migration and never dropped: it moved wallet_balance
--- on every completed transactions row. Every code path since then updates
--- the balance explicitly, so if this was still live it double-counted
--- wallet credits/debits and deducted card order totals from wallets.
-DROP TRIGGER IF EXISTS update_wallet_on_transaction ON public.transactions;
+-- (The legacy update_wallet_on_transaction trigger is dropped in part 1.)
 
 -- ── 2. profiles: customers can't touch role / balances / referral fields ───
 

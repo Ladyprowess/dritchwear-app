@@ -11,6 +11,7 @@ import {
   tokenFromMetadata,
   amountMatchesExpected,
   refundUnsettleablePayment,
+  settlementFailure,
   unfulfillableReason,
 } from './confirmPaymentLink.ts';
 
@@ -46,9 +47,13 @@ export async function confirmCheckoutOrder(
     .from('orders')
     .select('user_id, payment_status, total, currency')
     .eq('id', orderId)
-    .single();
+    .maybeSingle();
 
-  if (orderLookupError || !order) {
+  if (orderLookupError) {
+    // A transient DB failure, not a missing order - retryable.
+    return { success: false, status: 500, error: `Failed to load order: ${orderLookupError.message}` };
+  }
+  if (!order) {
     return { success: false, status: 404, error: 'Order not found' };
   }
   if (order.payment_status === 'paid') {
@@ -56,16 +61,6 @@ export async function confirmCheckoutOrder(
   }
   if (order.payment_status !== 'pending_payment') {
     return { success: false, status: 409, error: `Order is ${order.payment_status}` };
-  }
-
-  // Reject a reference already consumed by a different order.
-  const { data: existingRef } = await supabase
-    .from('orders')
-    .select('id')
-    .eq('paystack_reference', reference)
-    .maybeSingle();
-  if (existingRef && existingRef.id !== orderId) {
-    return { success: false, status: 409, error: 'This payment reference has already been used' };
   }
 
   const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
@@ -87,25 +82,24 @@ export async function confirmCheckoutOrder(
     return { success: false, status: 409, error: 'Payment reference mismatch' };
   }
   // If checkout embedded the order id in metadata, it must match this order.
+  // A charge without metadata is still accepted (older app builds), which is
+  // safe because settle_checkout_order_payment makes every reference
+  // single-use across all payment flows.
   const metaToken = tokenFromMetadata(verification.data.metadata);
   if (metaToken && metaToken !== orderId) {
     return { success: false, status: 409, error: 'This payment does not belong to this order' };
   }
 
-  // Only flips if still pending_payment, so a concurrent confirmation (the
-  // other path settling it first) can't double-process. reduce_stock_on_paid_order
-  // can also reject this UPDATE outright if the item sold out in the
-  // meantime - handled below as a distinct, non-generic failure.
-  const { data: updatedOrder, error: orderUpdateError } = await supabase
-    .from('orders')
-    .update({ payment_status: 'paid', order_status: 'pending', paystack_reference: reference })
-    .eq('id', orderId)
-    .eq('payment_status', 'pending_payment')
-    .select('id')
-    .maybeSingle();
+  // Reference check, paid flip and ledger entry in one locked DB call, so the
+  // client confirm, webhook and reconciliation can't double-process, and a
+  // reference can't be reused by any other order, link, top-up or invoice.
+  const { data: outcome, error: settleError } = await supabase.rpc('settle_checkout_order_payment', {
+    p_order_id: orderId,
+    p_reference: reference,
+  });
 
-  if (orderUpdateError) {
-    const reason = unfulfillableReason(orderUpdateError.message);
+  if (settleError) {
+    const reason = unfulfillableReason(settleError.message);
     if (reason) {
       // Paystack already captured the charge but the order can't go through
       // (sold out / promo used up) - refund as wallet credit (store credit,
@@ -114,32 +108,17 @@ export async function confirmCheckoutOrder(
       // since the client confirm and the webhook can both get here.
       return refundUnsettleablePayment(supabase, { orderId, reference, reason });
     }
-    return { success: false, status: 500, error: `Failed to update order: ${orderUpdateError.message}` };
-  }
-
-  if (!updatedOrder) {
-    // A concurrent request (webhook vs. client vs. reconciliation) already settled this order.
-    return { success: true, status: 200, alreadyPaid: true };
-  }
-
-  const { error: txError } = await supabase.from('transactions').insert({
-    user_id: order.user_id,
-    type: 'debit',
-    amount: order.total,
-    currency: order.currency || 'NGN',
-    description: 'Order payment - Paystack',
-    reference,
-    status: 'completed',
-  });
-  if (txError) {
-    // The order is correctly marked paid either way - a missing ledger
-    // entry is a lesser, recoverable problem than an unpaid "paid" order.
-    console.error('Failed to record transaction for order', orderId, txError);
+    if (/order_not_pending/.test(settleError.message || '')) {
+      // Settled by a concurrent path in between our read and this call.
+      const { data: latest } = await supabase.from('orders').select('payment_status').eq('id', orderId).maybeSingle();
+      if (latest?.payment_status === 'paid') return { success: true, status: 200, alreadyPaid: true };
+    }
+    return settlementFailure(settleError, 'Failed to settle order');
   }
 
   // In-app notification, push, and email are all handled by the orders
   // UPDATE trigger (customer_order_alerts, see 202608020004/202608040003
-  // migrations) now that payment_status/order_status were updated above.
+  // migrations) now that payment_status/order_status were updated.
 
-  return { success: true, status: 200 };
+  return outcome === 'already_paid' ? { success: true, status: 200, alreadyPaid: true } : { success: true, status: 200 };
 }

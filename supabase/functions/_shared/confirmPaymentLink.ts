@@ -58,6 +58,23 @@ export function unfulfillableReason(message: string | undefined): string | null 
   return null;
 }
 
+// Maps a failed settlement RPC to a result. Deliberate rejections raised by
+// our own functions/triggers (RAISE EXCEPTION → SQLSTATE P0001: reference
+// already used, wrong status, insufficient balance) are final, so 409 and
+// the webhook acks them. Anything else - connection drops, timeouts,
+// serialization failures - is reported as 500 so the webhook asks Paystack
+// to redeliver instead of losing the payment.
+export function settlementFailure(
+  error: { code?: string; message?: string },
+  context: string
+): ConfirmPaymentLinkResult {
+  if (error.code === 'P0001') {
+    return { success: false, status: 409, error: error.message || context };
+  }
+  console.error(`${context} (retryable):`, error);
+  return { success: false, status: 500, error: `${context}: ${error.message ?? 'database error'}` };
+}
+
 // Refunds such a charge to the order owner's wallet through one atomic,
 // idempotent DB call (refund_unsettleable_payment), so the client confirm,
 // webhook and reconciliation racing each other refund once, and the order
@@ -103,9 +120,14 @@ export async function confirmPaymentLink(
     .from('payment_links')
     .select('order_id, user_id, status, amount_ngn, expires_at')
     .eq('token', token)
-    .single();
+    .maybeSingle();
 
-  if (linkLookupError || !plink) {
+  if (linkLookupError) {
+    // Transient DB failure - retryable, and must not fall through to the
+    // webhook's "not a link, try it as an order" path.
+    return { success: false, status: 500, error: `Failed to load payment link: ${linkLookupError.message}` };
+  }
+  if (!plink) {
     return { success: false, status: 404, error: 'Payment link not found' };
   }
 
@@ -128,17 +150,6 @@ export async function confirmPaymentLink(
     return { success: false, status: 410, error: 'Payment link has expired' };
   }
 
-  // Reject a reference that was already consumed by another payment link.
-  // Prevents replaying a genuine payment against a different pending link of the same amount.
-  const { data: existingRef } = await supabase
-    .from('payment_links')
-    .select('token')
-    .eq('paystack_ref', reference)
-    .maybeSingle();
-  if (existingRef && existingRef.token !== token) {
-    return { success: false, status: 409, error: 'This payment reference has already been used' };
-  }
-
   const verifyResponse = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
     headers: { Authorization: `Bearer ${paystackSecretKey}` },
   });
@@ -158,69 +169,46 @@ export async function confirmPaymentLink(
     return { success: false, status: 409, error: 'Payment reference mismatch' };
   }
   // If checkout embedded the link token in metadata, it must match this link.
+  // A charge without metadata (the in-app pay page before this release) is
+  // still accepted, which is safe because settle_payment_link_payment makes
+  // every reference single-use across all payment flows.
   const metaToken = tokenFromMetadata(verification.data.metadata);
   if (metaToken && metaToken !== token) {
     return { success: false, status: 409, error: 'This payment does not belong to this order' };
   }
   const verifiedCustomerEmail: string | null = verification.data.customer?.email || null;
 
-  const markLinkPaid = () => supabase.from('payment_links').update({
-    status: 'paid',
-    payer_email: verifiedCustomerEmail || payerEmail || null,
-    paystack_ref: reference || null,
-    paid_at: new Date().toISOString(),
-  }).eq('token', token).eq('status', 'pending').select('token');
+  const payer = verifiedCustomerEmail || payerEmail || null;
 
-  // 1. Settle the order FIRST. It used to run after the link was already
-  //    marked paid, so if it failed (e.g. the stock trigger rejecting a
-  //    sold-out item) the payer was charged, the link read "paid", the order
-  //    stayed unpaid and every retry returned alreadyPaid. Only flips if
-  //    still pending_payment, so concurrent confirmations can't double-process.
-  if (plink?.order_id) {
-    const { data: updatedOrder, error: orderUpdateError } = await supabase.from('orders').update({
-      payment_status: 'paid',
-      order_status: 'in_review',
-    }).eq('id', plink.order_id).eq('payment_status', 'pending_payment').select('id').maybeSingle();
+  // Reference secured, order and link flipped to paid, all in one locked DB
+  // call - the reference is checked against every flow BEFORE anything is
+  // marked paid, and concurrent confirmations can't double-process.
+  const { data: outcome, error: settleError } = await supabase.rpc('settle_payment_link_payment', {
+    p_token: token,
+    p_reference: reference,
+    p_payer_email: payer,
+  });
 
-    if (orderUpdateError) {
-      const reason = unfulfillableReason(orderUpdateError.message);
-      if (reason) {
-        // Same handling as confirmCheckoutOrder: the charge was captured but
-        // the order can't go through, so refund as store credit to the
-        // requester (whose order it is) and close the link.
-        return refundUnsettleablePayment(supabase, {
-          orderId: plink.order_id,
-          reference,
-          reason,
-          linkToken: token,
-          payerEmail: verifiedCustomerEmail || payerEmail || null,
-        });
-      }
-      return { success: false, status: 500, error: `Failed to update order: ${orderUpdateError.message}` };
+  if (settleError) {
+    const reason = plink.order_id ? unfulfillableReason(settleError.message) : null;
+    if (reason) {
+      // Same handling as confirmCheckoutOrder: the charge was captured but
+      // the order can't go through, so refund as store credit to the
+      // requester (whose order it is) and close the link.
+      return refundUnsettleablePayment(supabase, {
+        orderId: plink.order_id,
+        reference,
+        reason,
+        linkToken: token,
+        payerEmail: payer,
+      });
     }
-
-    if (!updatedOrder) {
-      // A concurrent request (the other confirmation path) already settled it.
-      await markLinkPaid();
-      return { success: true, status: 200, alreadyPaid: true };
-    }
-
-    // In-app notification, push, and the "payment received" email are all
-    // handled by the orders UPDATE trigger (customer_order_alerts, see
-    // 202608020004/202608040003 migrations) now that order_status/
-    // payment_status were updated above.
+    return settlementFailure(settleError, 'Failed to settle payment link');
   }
 
-  // 2. Mark payment link as paid.
-  const { data: updatedLinks, error: updateLinkError } = await markLinkPaid();
+  // In-app notification, push, and the "payment received" email are all
+  // handled by the orders UPDATE trigger (customer_order_alerts, see
+  // 202608020004/202608040003 migrations) now that the order was updated.
 
-  if (updateLinkError) {
-    return { success: false, status: 500, error: `Failed to update payment link: ${updateLinkError.message}` };
-  }
-
-  if (!plink?.order_id && (!updatedLinks || updatedLinks.length === 0)) {
-    return { success: true, status: 200, alreadyPaid: true };
-  }
-
-  return { success: true, status: 200 };
+  return outcome === 'already_paid' ? { success: true, status: 200, alreadyPaid: true } : { success: true, status: 200 };
 }

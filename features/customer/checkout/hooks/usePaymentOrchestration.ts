@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Crypto from 'expo-crypto';
 import { usePostHog } from 'posthog-react-native';
 import { supabase } from '@/lib/supabase';
 import { fetchCommerceConfig } from '@/lib/commerceSettings';
@@ -93,6 +94,25 @@ export function usePaymentOrchestration({
   // Set synchronously on the first tap, before any await, so a double tap
   // can't start two orders (or two wallet debits) while state catches up.
   const inFlight = useRef(false);
+  // One idempotency key per checkout attempt (same cart, address, promo and
+  // payment method). Retrying after a lost response resends the same key, so
+  // place-order hands back the order it already made instead of creating -
+  // and for wallet, paying for - a second one. Any change to the checkout
+  // starts a new attempt with a new key.
+  const checkoutAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  const checkoutKeyFor = (paymentMethod: string) => {
+    const fingerprint = JSON.stringify([
+      paymentMethod,
+      items.map(item => [item.productId, item.quantity, item.size, item.color, item.note ?? null, item.logoUrl ?? null]),
+      deliveryAddress.trim(), deliveryState.trim(), deliveryCountry.trim(), contactPhone.trim(),
+      orderNote.trim(), appliedPromo?.promoId ?? null,
+    ]);
+    if (checkoutAttempt.current?.fingerprint !== fingerprint) {
+      checkoutAttempt.current = { fingerprint, key: Crypto.randomUUID() };
+    }
+    return checkoutAttempt.current.key;
+  };
 
   const placeOrder = async (
     paymentMethod: 'paystack' | 'pay_link' | 'wallet',
@@ -107,6 +127,7 @@ export function usePaymentOrchestration({
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
       body: JSON.stringify({
         payment_method: paymentMethod,
+        checkout_key: checkoutKeyFor(paymentMethod),
         items: items.map(item => ({
           product_id: item.productId,
           image: item.productImage ?? null,
@@ -128,6 +149,9 @@ export function usePaymentOrchestration({
 
     const result = response ? await response.json().catch(() => null) : null;
     if (!result) return { success: false, error: 'Could not reach checkout. Please check your connection and try again.' };
+    // That attempt is over (completed elsewhere, or refunded/cancelled) -
+    // the next tap should be a fresh attempt.
+    if (result.code === 'checkout_finished') checkoutAttempt.current = null;
     return result as PlaceOrderResult;
   };
 

@@ -12,6 +12,11 @@
 //                               place_wallet_order (debit + paid order +
 //                               ledger in one DB transaction).
 //
+// checkout_key makes it idempotent: the app sends one key per checkout
+// attempt, and a retry with the same key (e.g. after the response was lost
+// on a flaky connection) gets the order that was already created - never a
+// second order or a second wallet debit.
+//
 // Deploy: supabase functions deploy place-order
 
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
@@ -46,6 +51,46 @@ function fail(status: number, error: string, extra: Record<string, unknown> = {}
 
 const str = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
 
+const UNIQUE_VIOLATION = '23505';
+
+// The response for an order this checkout_key already created, or null.
+async function replayCheckout(userId: string, checkoutKey: string): Promise<Response | null> {
+  if (!checkoutKey) return null;
+  const { data: order } = await supabase
+    .from('orders')
+    .select('id, payment_method, payment_status, subtotal, service_fee, delivery_fee, tax, discount_amount, customization_fee, total')
+    .eq('user_id', userId)
+    .eq('checkout_key', checkoutKey)
+    .maybeSingle();
+  if (!order) return null;
+
+  const totals = {
+    subtotal: Number(order.subtotal),
+    serviceFee: Number(order.service_fee),
+    deliveryFee: Number(order.delivery_fee),
+    tax: Number(order.tax),
+    discountAmount: Number(order.discount_amount ?? 0),
+    customizationFee: Number(order.customization_fee ?? 0),
+    total: Number(order.total),
+  };
+  const settled = order.payment_method === 'wallet' && order.payment_status === 'paid';
+  const awaitingPayment = order.payment_method !== 'wallet' && order.payment_status === 'pending_payment';
+  if (!settled && order.payment_status === 'paid') {
+    // Card / Pay for Me order already paid (the app may just never have
+    // heard back) - say so rather than letting the customer pay again.
+    return fail(409, 'This order has already been paid. You can find it in your Orders.', { code: 'already_paid', orderId: order.id });
+  }
+  if (!settled && !awaitingPayment) {
+    return fail(409, 'This checkout has already been completed. Please review your cart and try again.', { code: 'checkout_finished' });
+  }
+  if (order.payment_method === 'pay_link') {
+    const { data: link } = await supabase.from('payment_links').select('token').eq('order_id', order.id).maybeSingle();
+    if (!link) return null;
+    return json({ success: true, orderId: order.id, token: link.token, totals, replayed: true });
+  }
+  return json({ success: true, orderId: order.id, totals, replayed: true });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'POST') return fail(405, 'Method not allowed');
@@ -60,6 +105,10 @@ Deno.serve(async (req: Request) => {
   if (!['paystack', 'pay_link', 'wallet'].includes(paymentMethod)) {
     return fail(400, 'Unsupported payment method');
   }
+
+  const checkoutKey = str(body.checkout_key).slice(0, 100);
+  const replay = await replayCheckout(userId, checkoutKey);
+  if (replay) return replay;
 
   const deliveryAddress = str(body.delivery_address);
   const deliveryState = str(body.delivery_state);
@@ -216,11 +265,18 @@ Deno.serve(async (req: Request) => {
     promo_code_id: promo?.id ?? null,
     discount_amount: discountAmount,
     notes,
+    checkout_key: checkoutKey || null,
   };
 
   if (paymentMethod === 'wallet') {
     const { data: walletOrderId, error: payError } = await supabase.rpc('place_wallet_order', { p_order: orderRow });
     if (payError) {
+      if (payError.code === UNIQUE_VIOLATION) {
+        // A concurrent request with this checkout_key won; its debit stands
+        // and this one rolled back - hand back that order.
+        const replayed = await replayCheckout(userId, checkoutKey);
+        if (replayed) return replayed;
+      }
       if (/insufficient_wallet_balance/.test(payError.message || '')) {
         return fail(402, 'Your wallet balance is too low for this order. Please fund your wallet and try again.', {
           code: 'insufficient_balance',
@@ -253,6 +309,10 @@ Deno.serve(async (req: Request) => {
     .select('id')
     .single();
 
+  if (orderError?.code === UNIQUE_VIOLATION) {
+    const replayed = await replayCheckout(userId, checkoutKey);
+    if (replayed) return replayed;
+  }
   if (orderError || !order) {
     console.error('place-order: insert failed', orderError);
     return fail(500, 'Could not start checkout. Please try again.');

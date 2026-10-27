@@ -12,7 +12,7 @@
 // asked for, and the verified captured amount must cover it.
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.43.4';
-import { amountMatchesExpected, tokenFromMetadata } from './confirmPaymentLink.ts';
+import { amountMatchesExpected, settlementFailure, tokenFromMetadata } from './confirmPaymentLink.ts';
 
 export interface SettlementResult {
   success: boolean;
@@ -29,14 +29,20 @@ export function isInvoiceToken(token: string) {
   return token.startsWith('invoice:');
 }
 
-async function verifyCharge(reference: string, paystackSecretKey: string) {
+async function verifyCharge(reference: string, paystackSecretKey: string): Promise<{ charge?: any; failure?: SettlementResult }> {
   const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
     headers: { Authorization: `Bearer ${paystackSecretKey}` },
   });
   const verification = await response.json().catch(() => null) as any;
-  if (!response.ok || !verification?.status || verification?.data?.status !== 'success') return null;
-  if (verification.data.reference !== reference || verification.data.currency !== 'NGN') return null;
-  return verification.data;
+  // Not verifiable (yet) - retryable, the webhook asks Paystack to redeliver.
+  if (!response.ok || !verification?.status || verification?.data?.status !== 'success') {
+    return { failure: { success: false, status: 402, error: 'Paystack could not verify this payment' } as SettlementResult };
+  }
+  // Verified but not acceptable - final.
+  if (verification.data.reference !== reference || verification.data.currency !== 'NGN') {
+    return { failure: { success: false, status: 409, error: 'Payment reference or currency mismatch' } as SettlementResult };
+  }
+  return { charge: verification.data };
 }
 
 export async function confirmWalletFunding(
@@ -47,8 +53,8 @@ export async function confirmWalletFunding(
   if (!reference) return { success: false, status: 400, error: 'Missing transaction reference' };
   if (!paystackSecretKey) return { success: false, status: 503, error: 'Payment verification is not configured' };
 
-  const charge = await verifyCharge(reference, paystackSecretKey);
-  if (!charge) return { success: false, status: 402, error: 'Paystack could not verify this payment' };
+  const { charge, failure } = await verifyCharge(reference, paystackSecretKey);
+  if (failure) return failure;
 
   const [, userId, amountText] = tokenFromMetadata(charge.metadata).split(':');
   const amount = Number(amountText);
@@ -81,15 +87,16 @@ export async function confirmInvoicePayment(
   if (!reference) return { success: false, status: 400, error: 'Missing transaction reference' };
   if (!paystackSecretKey) return { success: false, status: 503, error: 'Payment verification is not configured' };
 
-  const charge = await verifyCharge(reference, paystackSecretKey);
-  if (!charge) return { success: false, status: 402, error: 'Paystack could not verify this payment' };
+  const { charge, failure } = await verifyCharge(reference, paystackSecretKey);
+  if (failure) return failure;
 
   const invoiceId = tokenFromMetadata(charge.metadata).replace(/^invoice:/, '');
-  const { data: invoice } = await supabase
+  const { data: invoice, error: invoiceError } = await supabase
     .from('invoices')
     .select('id, user_id, amount, status')
     .eq('id', invoiceId)
     .maybeSingle();
+  if (invoiceError) return { success: false, status: 500, error: `Failed to load invoice: ${invoiceError.message}` };
   if (!invoice) return { success: false, status: 404, error: 'Invoice not found' };
   if (expectedUserId && invoice.user_id !== expectedUserId) {
     return { success: false, status: 403, error: 'This invoice belongs to a different account' };
@@ -117,7 +124,9 @@ export async function settleInvoice(
     if (/insufficient_wallet_balance/.test(error.message || '')) {
       return { success: false, status: 402, error: 'Your wallet balance is too low for this payment.' };
     }
-    return { success: false, status: 409, error: error.message };
+    // Deliberate rejections (wrong status, reference reused) are final;
+    // anything else is retryable so the webhook gets redelivered.
+    return settlementFailure(error, 'Failed to settle invoice');
   }
   if (settled === false) return { success: true, status: 200, alreadyPaid: true };
 

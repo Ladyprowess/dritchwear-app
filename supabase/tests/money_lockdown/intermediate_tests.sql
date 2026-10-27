@@ -45,6 +45,10 @@ SELECT pg_temp.check('new functions: place_wallet_order available to service_rol
   pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":100,"items":[]}')$q$) = 'ok');
 SELECT pg_temp.check('new functions: credit_wallet_from_paystack available to service_role',
   pg_temp.attempt('service_role', NULL, $q$SELECT public.credit_wallet_from_paystack('11111111-1111-1111-1111-111111111111', 100, 'ref_X')$q$) = 'ok');
+SELECT pg_temp.check('legacy wallet trigger already gone after part 1 (credits land once)',
+  -- 1000 + 1 (fund_wallet) - 100 (wallet order) + 100 (top-up), each applied once
+  (SELECT wallet_balance FROM profiles WHERE id=:C) = 1001
+  AND NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_wallet_on_transaction'));
 SELECT pg_temp.check('new functions: still not callable by customers',
   pg_temp.attempt('authenticated', :C, $q$SELECT public.credit_wallet_from_paystack('11111111-1111-1111-1111-111111111111', 100, 'ref_Y')$q$) LIKE 'error:%permission denied%');
 ROLLBACK;

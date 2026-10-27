@@ -35,6 +35,22 @@ BEGIN
 END $$;
 GRANT EXECUTE ON FUNCTION pg_temp.attempt(text, text, text) TO PUBLIC;
 
+-- SQLSTATE a statement raises (or 'ok'): P0001 = deliberate rejection
+-- (final, webhook acks), anything else = retryable.
+CREATE FUNCTION pg_temp.state_of(role text, sql text) RETURNS text LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM set_config('request.jwt.claim.role', role, true);
+  EXECUTE format('SET LOCAL ROLE %I', role);
+  BEGIN
+    EXECUTE sql;
+    RESET ROLE;
+    RETURN 'ok';
+  EXCEPTION WHEN OTHERS THEN
+    RESET ROLE;
+    RETURN SQLSTATE;
+  END;
+END $$;
+
 BEGIN;
 -- 1. Customer can't self-promote or edit balances (silently reverted)
 SELECT pg_temp.attempt('authenticated', :C, $q$UPDATE profiles SET role='admin', wallet_balance=9999999, points_balance=99999, full_name='Ada' WHERE id='11111111-1111-1111-1111-111111111111'$q$);
@@ -87,9 +103,10 @@ SELECT pg_temp.check('customer transactions insert blocked',
 -- 7. Wallet checkout (service role, as place-order calls it)
 SELECT pg_temp.check('place_wallet_order insufficient balance raises',
   pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":999999,"items":[]}')$q$) LIKE 'error:%insufficient_wallet_balance%');
-SELECT pg_temp.check('place_wallet_order sold out rolls back debit',
-  pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":900,"items":[{"product_id":"33333333-3333-3333-3333-333333333333","name":"Tee","quantity":3}]}')$q$) LIKE 'error:%Insufficient stock%'
-  AND (SELECT wallet_balance FROM profiles WHERE id=:C) = 2000);
+SELECT pg_temp.check('place_wallet_order sold out rolls back debit (call)',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":900,"items":[{"product_id":"33333333-3333-3333-3333-333333333333","name":"Tee","quantity":3}]}')$q$) LIKE 'error:%Insufficient stock%');
+SELECT pg_temp.check('place_wallet_order sold out rolls back debit (effect)',
+  (SELECT wallet_balance FROM profiles WHERE id=:C) = 2000);
 SELECT pg_temp.check('place_wallet_order returned ok',
   pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":600,"subtotal":600,"items":[{"product_id":"33333333-3333-3333-3333-333333333333","name":"Tee","quantity":2}]}')$q$) = 'ok');
 SELECT pg_temp.check('place_wallet_order debited, paid order + ledger written', (SELECT wallet_balance FROM profiles WHERE id=:C) = 1400
@@ -168,6 +185,55 @@ SELECT pg_temp.check('promo at max_usage cannot be settled',
   pg_temp.attempt('service_role', NULL, $q$UPDATE orders SET payment_status='paid' WHERE id='88888888-0000-0000-0000-000000000004'$q$) LIKE 'error:%usage limit%');
 SELECT pg_temp.check('admin can still confirm promo order by hand',
   pg_temp.attempt('authenticated', :A, $q$UPDATE orders SET payment_status='paid' WHERE id='88888888-0000-0000-0000-000000000004'$q$) = 'ok');
+
+-- 14. One Paystack reference settles exactly one thing, across all flows
+UPDATE products SET stock = 100;
+INSERT INTO orders (id, user_id, total, payment_status, order_status, items) VALUES
+  ('aaaaaaaa-0000-0000-0000-000000000001', :C, 1000, 'pending_payment', 'pending_payment', '[{"product_id":"33333333-3333-3333-3333-333333333333","quantity":1}]'),
+  ('aaaaaaaa-0000-0000-0000-000000000002', :C, 1000, 'pending_payment', 'pending_payment', '[]'),
+  ('aaaaaaaa-0000-0000-0000-000000000003', :C, 1000, 'pending_payment', 'pending_payment', '[]'),
+  ('aaaaaaaa-0000-0000-0000-000000000004', :C, 1000, 'pending_payment', 'pending_payment', '[{"product_id":"33333333-3333-3333-3333-333333333333","quantity":500}]');
+INSERT INTO payment_links (token, order_id, user_id, amount_ngn, status, requester_name, items) VALUES
+  ('tokS', 'aaaaaaaa-0000-0000-0000-000000000003', :C, 1000, 'pending', 'Ada', '[]');
+SELECT pg_temp.check('card settle succeeds',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_checkout_order_payment('aaaaaaaa-0000-0000-0000-000000000001', 'ref_S')$q$) = 'ok');
+SELECT pg_temp.check('card settle wrote paid order + ledger',
+  (SELECT payment_status='paid' AND paystack_reference='ref_S' FROM orders WHERE id='aaaaaaaa-0000-0000-0000-000000000001')
+  AND (SELECT count(*) FROM transactions WHERE reference='ref_S') = 1);
+SELECT pg_temp.check('card settle replay is a no-op (call)',
+  pg_temp.attempt('service_role', NULL, $q$DO $d$ BEGIN IF public.settle_checkout_order_payment('aaaaaaaa-0000-0000-0000-000000000001', 'ref_S') <> 'already_paid' THEN RAISE EXCEPTION 'not idempotent'; END IF; END $d$$q$) = 'ok');
+SELECT pg_temp.check('card settle replay is a no-op (effect)',
+  (SELECT count(*) FROM transactions WHERE reference='ref_S') = 1);
+SELECT pg_temp.check('same reference rejected for another order',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_checkout_order_payment('aaaaaaaa-0000-0000-0000-000000000002', 'ref_S')$q$) LIKE 'error:%reference_used%');
+SELECT pg_temp.check('order reference rejected for a Pay for Me link',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_payment_link_payment('tokS', 'ref_S')$q$) LIKE 'error:%reference_used%');
+SELECT pg_temp.check('wallet top-up reference rejected for a Pay for Me link',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_payment_link_payment('tokS', 'ref_A')$q$) LIKE 'error:%reference_used%');
+SELECT pg_temp.check('link left pending after rejected references',
+  (SELECT status FROM payment_links WHERE token='tokS') = 'pending'
+  AND (SELECT payment_status FROM orders WHERE id='aaaaaaaa-0000-0000-0000-000000000003') = 'pending_payment');
+SELECT pg_temp.check('fresh reference settles link',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_payment_link_payment('tokS', 'ref_L', 'payer@x.com')$q$) = 'ok');
+SELECT pg_temp.check('link and its order flipped together', (SELECT status='paid' AND paystack_ref='ref_L' FROM payment_links WHERE token='tokS')
+  AND (SELECT payment_status='paid' AND order_status='in_review' FROM orders WHERE id='aaaaaaaa-0000-0000-0000-000000000003'));
+SELECT pg_temp.check('sold out during card settle rolls everything back (call)',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.settle_checkout_order_payment('aaaaaaaa-0000-0000-0000-000000000004', 'ref_T')$q$) LIKE 'error:%Insufficient stock%');
+SELECT pg_temp.check('sold out during card settle rolls everything back (effect)',
+  (SELECT payment_status FROM orders WHERE id='aaaaaaaa-0000-0000-0000-000000000004') = 'pending_payment'
+  AND (SELECT count(*) FROM transactions WHERE reference='ref_T') = 0);
+SELECT pg_temp.check('reference reuse is a final rejection (P0001, webhook acks)',
+  pg_temp.state_of('service_role', $q$SELECT public.settle_checkout_order_payment('aaaaaaaa-0000-0000-0000-000000000002', 'ref_S')$q$) = 'P0001');
+
+-- 15. Wallet checkout idempotency key
+SELECT wallet_balance AS bal_before FROM profiles WHERE id = :C \gset
+SELECT pg_temp.check('wallet checkout with key succeeds',
+  pg_temp.attempt('service_role', NULL, $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":100,"items":[],"checkout_key":"key-1"}')$q$) = 'ok');
+SELECT pg_temp.check('replayed key is rejected by the unique index (23505, place-order replays)',
+  pg_temp.state_of('service_role', $q$SELECT public.place_wallet_order('{"user_id":"11111111-1111-1111-1111-111111111111","total":100,"items":[],"checkout_key":"key-1"}')$q$) = '23505');
+SELECT pg_temp.check('replayed key debited the wallet only once',
+  (SELECT wallet_balance FROM profiles WHERE id=:C) = :bal_before - 100
+  AND (SELECT count(*) FROM orders WHERE checkout_key='key-1') = 1);
 
 -- 10. Admin still updates orders; signup gives customer role
 SELECT pg_temp.check('admin order update runs',

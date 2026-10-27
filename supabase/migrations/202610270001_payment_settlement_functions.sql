@@ -6,8 +6,17 @@
 --
 -- Deploy order:
 --   1. this migration
---   2. edge functions + app update (EAS update / web build)
+--   2. edge functions, then the app update (EAS update / web build)
 --   3. 202610270002_lock_down_money_paths.sql
+
+-- ── 0. Legacy wallet trigger ────────────────────────────────────────────────
+-- From the very first migration and never dropped: it moved wallet_balance
+-- on every completed transactions row. Every code path since then -
+-- including the current app and the settlement functions below - updates
+-- the balance explicitly, so if this was still live it double-counted
+-- wallet credits/debits and deducted card order totals from wallets. Dropped
+-- here, first, so nothing in either app version runs alongside it.
+DROP TRIGGER IF EXISTS update_wallet_on_transaction ON public.transactions;
 
 -- ── 1. Caller helpers (also used by part 2) ───────────────────────────────────────────────────────
 
@@ -83,7 +92,9 @@ GRANT EXECUTE ON FUNCTION public.get_payment_link(text) TO anon, authenticated, 
 -- in ONE transaction. If the stock trigger rejects the paid insert (sold
 -- out), the debit rolls back with it, so there's no "debited but no order"
 -- window and no refund step that can fail. p_order holds the totals
--- place-order computed server-side.
+-- place-order computed server-side. A replayed checkout_key hits the unique
+-- index, which rolls the debit back too; place-order then returns the
+-- original order.
 CREATE OR REPLACE FUNCTION public.place_wallet_order(p_order jsonb)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -111,7 +122,7 @@ BEGIN
     user_id, items, subtotal, service_fee, delivery_fee, tax, customization_fee, total,
     payment_method, payment_status, order_status, delivery_address, delivery_state,
     delivery_country, contact_phone, currency, original_amount, promo_code, promo_code_id,
-    discount_amount, notes
+    discount_amount, notes, checkout_key
   ) VALUES (
     v_user_id,
     p_order->'items',
@@ -131,7 +142,8 @@ BEGIN
     p_order->>'promo_code',
     (p_order->>'promo_code_id')::uuid,
     COALESCE((p_order->>'discount_amount')::numeric, 0),
-    p_order->>'notes'
+    p_order->>'notes',
+    NULLIF(p_order->>'checkout_key', '')
   ) RETURNING id INTO v_order_id;
 
   INSERT INTO public.transactions (user_id, type, amount, description, reference, status)
@@ -308,6 +320,110 @@ BEGIN
 END;
 $$;
 
+-- Checkout idempotency: place-order sends one key per checkout attempt, so
+-- a retry after a lost response returns the order it already made instead
+-- of charging the wallet (or opening Paystack for) a second order.
+ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS checkout_key text;
+CREATE UNIQUE INDEX IF NOT EXISTS orders_user_checkout_key_key
+  ON public.orders (user_id, checkout_key) WHERE checkout_key IS NOT NULL;
+
+-- Card checkout settlement for confirmCheckoutOrder: reference check, paid
+-- flip and ledger entry under one lock. The reference lock + the global
+-- paystack_reference_used check make every Paystack reference single-use
+-- across ALL flows (checkout, Pay for Me, wallet top-up, invoices, refunds),
+-- so one charge can never settle two things - with or without metadata.
+-- Stock / promo triggers may raise; the whole settlement then rolls back
+-- and the caller refunds via refund_unsettleable_payment.
+CREATE OR REPLACE FUNCTION public.settle_checkout_order_payment(p_order_id uuid, p_reference text)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_order public.orders%ROWTYPE;
+BEGIN
+  IF COALESCE(p_reference, '') = '' THEN
+    RAISE EXCEPTION 'Missing payment reference';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('paystack:' || p_reference));
+
+  SELECT * INTO v_order FROM public.orders WHERE id = p_order_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_not_found';
+  END IF;
+  IF v_order.payment_status = 'paid' AND v_order.paystack_reference = p_reference THEN
+    RETURN 'already_paid';
+  END IF;
+  IF v_order.payment_status IS DISTINCT FROM 'pending_payment' THEN
+    RAISE EXCEPTION 'order_not_pending: order is %', v_order.payment_status;
+  END IF;
+  IF public.paystack_reference_used(p_reference) THEN
+    RAISE EXCEPTION 'reference_used: this payment reference has already been used';
+  END IF;
+
+  UPDATE public.orders
+  SET payment_status = 'paid', order_status = 'pending', paystack_reference = p_reference
+  WHERE id = p_order_id;
+
+  INSERT INTO public.transactions (user_id, type, amount, currency, description, reference, status, payment_provider)
+  VALUES (v_order.user_id, 'debit', v_order.total, COALESCE(v_order.currency, 'NGN'),
+          'Order payment - Paystack', p_reference, 'completed', 'paystack');
+
+  RETURN 'settled';
+END;
+$$;
+
+-- Pay for Me settlement for confirmPaymentLink: the reference is secured
+-- BEFORE anything is marked paid, and the order and link flip together.
+CREATE OR REPLACE FUNCTION public.settle_payment_link_payment(
+  p_token text,
+  p_reference text,
+  p_payer_email text DEFAULT NULL
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_link public.payment_links%ROWTYPE;
+  v_order_status text;
+BEGIN
+  IF COALESCE(p_reference, '') = '' THEN
+    RAISE EXCEPTION 'Missing payment reference';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtext('paystack:' || p_reference));
+
+  SELECT * INTO v_link FROM public.payment_links WHERE token = p_token FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'link_not_found';
+  END IF;
+  IF v_link.status = 'paid' AND v_link.paystack_ref = p_reference THEN
+    RETURN 'already_paid';
+  END IF;
+  IF v_link.status IS DISTINCT FROM 'pending' THEN
+    RAISE EXCEPTION 'link_not_pending: link is %', v_link.status;
+  END IF;
+  IF public.paystack_reference_used(p_reference) THEN
+    RAISE EXCEPTION 'reference_used: this payment reference has already been used';
+  END IF;
+
+  IF v_link.order_id IS NOT NULL THEN
+    SELECT payment_status INTO v_order_status FROM public.orders WHERE id = v_link.order_id FOR UPDATE;
+    IF v_order_status IS DISTINCT FROM 'pending_payment' THEN
+      RAISE EXCEPTION 'order_not_pending: order is %', v_order_status;
+    END IF;
+    UPDATE public.orders SET payment_status = 'paid', order_status = 'in_review' WHERE id = v_link.order_id;
+  END IF;
+
+  UPDATE public.payment_links
+  SET status = 'paid', paystack_ref = p_reference, payer_email = p_payer_email, paid_at = now()
+  WHERE token = p_token;
+
+  RETURN 'settled';
+END;
+$$;
+
 -- ── 4. Only restore stock that was actually taken ──────────────────────────
 -- Moving a never-paid order to 'refunded' (the sold-out refund above, which
 -- confirmCheckoutOrder already did before this) used to add its items back
@@ -342,7 +458,8 @@ BEGIN
     WHERE n.nspname = 'public'
       AND p.proname IN (
         'place_wallet_order', 'paystack_reference_used', 'credit_wallet_from_paystack',
-        'settle_invoice_payment', 'refund_unsettleable_payment'
+        'settle_invoice_payment', 'refund_unsettleable_payment',
+        'settle_checkout_order_payment', 'settle_payment_link_payment'
       )
   LOOP
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC, anon, authenticated', r.sig);
