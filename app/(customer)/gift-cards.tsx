@@ -245,22 +245,11 @@ export default function GiftCardsScreen() {
   const sendGiftCardEmail = async (shareToken: string, code: string) => {
     if (!recipientEmail.trim()) return;
 
-    // Always use a web HTTPS link in emails - deep links (dritchwear://) only work
-    // if the native app is installed and can get flagged by spam filters.
-    const link = buildPublicUrl('/gift-cards', { gift: shareToken });
-    const amount = formatCurrency(currentAmount, userCurrency);
-
     try {
+      // The function builds the whole email (recipient, amount, web link)
+      // from this gift card's own record, so only the code is sent.
       const { data, error } = await supabase.functions.invoke('send-gift-card-email', {
-        body: {
-          to: recipientEmail.trim(),
-          recipientName: recipientName.trim() || 'there',
-          senderName: (senderName.trim() || profile?.full_name || 'Someone'),
-          amount,
-          code,
-          link,
-          message: message.trim() || null,
-        },
+        body: { code },
       });
 
       if (error) {

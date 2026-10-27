@@ -48,6 +48,16 @@ async function readJsonBody(req: Request) {
   }
 }
 
+// Item names, sizes/colors and requester_name are customer-controlled.
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function html(body: string, title = 'Pay - Dritchwear') {
   return new Response(
     `<!DOCTYPE html>
@@ -134,7 +144,7 @@ Deno.serve(async (req: Request) => {
         payerEmail,
         paystackSecretKey: PAYSTACK_SECRET_KEY,
       });
-      return json(result, result.status);
+      return json({ ...result }, result.status);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('Payment confirmation failed:', message);
@@ -177,14 +187,14 @@ Deno.serve(async (req: Request) => {
   const itemsHtml = items.map((item: any) => `
     <div class="item">
       <div>
-        <div class="item-name">${item.name} x${item.quantity}</div>
-        ${item.size || item.color ? `<div class="item-meta">${[item.size, item.color].filter(Boolean).join(' · ')}</div>` : ''}
+        <div class="item-name">${escapeHtml(item.name)} x${escapeHtml(item.quantity)}</div>
+        ${item.size || item.color ? `<div class="item-meta">${escapeHtml([item.size, item.color].filter(Boolean).join(' · '))}</div>` : ''}
       </div>
-      <div class="item-price">₦${(item.price * item.quantity).toLocaleString()}</div>
+      <div class="item-price">₦${(Number(item.price) * Number(item.quantity)).toLocaleString()}</div>
     </div>`).join('');
 
   const body = `
-    <div class="badge">${requester} wants you to pay for this order</div>
+    <div class="badge">${escapeHtml(requester)} wants you to pay for this order</div>
 
     <h2>Order Summary</h2>
     ${itemsHtml ? `<div class="items">${itemsHtml}</div>` : ''}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { usePostHog } from 'posthog-react-native';
@@ -12,11 +12,29 @@ import type { CartItem, AppliedPromo } from '@/contexts/CartContext';
 import type { Profile } from '@/lib/auth';
 import { calculateDiscountNGN } from '../pricing';
 
-// This module is the ONLY place allowed to call the Paystack SDK or write to
-// orders / profiles.wallet_balance / transactions. Every function here is a
-// verbatim, unreordered move from the original checkout.tsx - see the plan's
-// checkout guardrails (pure-move-first, no "cleanup" of the sequential
-// Supabase calls or the existing swallowed-error / posthog patterns).
+// This module is the ONLY place allowed to call the Paystack SDK or start
+// an order. Orders are created server-side by the place-order edge function
+// (prices, fees, promo and wallet debit all decided there); the totals
+// computed here are only for display and the pre-checks below.
+
+interface PlaceOrderTotals {
+  subtotal: number;
+  serviceFee: number;
+  deliveryFee: number;
+  tax: number;
+  discountAmount: number;
+  customizationFee: number;
+  total: number;
+}
+
+interface PlaceOrderResult {
+  success: boolean;
+  error?: string;
+  code?: string;
+  orderId?: string;
+  token?: string;
+  totals?: PlaceOrderTotals;
+}
 
 interface UsePaymentOrchestrationArgs {
   user: { id: string; email?: string | null; user_metadata?: any } | null;
@@ -72,6 +90,51 @@ export function usePaymentOrchestration({
   const [showPayLinkModal, setShowPayLinkModal] = useState(false);
   const [payLinkLoading, setPayLinkLoading] = useState(false);
   const [generatedPayLink, setGeneratedPayLink] = useState('');
+  // Set synchronously on the first tap, before any await, so a double tap
+  // can't start two orders (or two wallet debits) while state catches up.
+  const inFlight = useRef(false);
+
+  const placeOrder = async (
+    paymentMethod: 'paystack' | 'pay_link' | 'wallet',
+    expectedTotal: number
+  ): Promise<PlaceOrderResult> => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const jwt = sessionData.session?.access_token;
+    if (!jwt) return { success: false, error: 'Please sign in again to place your order.' };
+
+    const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/place-order`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify({
+        payment_method: paymentMethod,
+        items: items.map(item => ({
+          product_id: item.productId,
+          image: item.productImage ?? null,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+          note: item.note ?? null,
+          logo_url: item.logoUrl ?? null,
+        })),
+        delivery_address: deliveryAddress.trim(),
+        delivery_state: deliveryState.trim(),
+        delivery_country: deliveryCountry.trim(),
+        contact_phone: contactPhone.trim(),
+        notes: orderNote.trim() || null,
+        promo_code_id: appliedPromo?.promoId || null,
+        expected_total: expectedTotal,
+      }),
+    }).catch(() => null);
+
+    const result = response ? await response.json().catch(() => null) : null;
+    if (!result) return { success: false, error: 'Could not reach checkout. Please check your connection and try again.' };
+    return result as PlaceOrderResult;
+  };
+
+  const placeOrderErrorMessage = (result: PlaceOrderResult) =>
+    result.code === 'price_changed' && result.totals
+      ? `${result.error}\n\nNew total: ${formatCurrency(result.totals.total, 'NGN')}`
+      : result.error || 'Could not place your order. Please try again.';
 
   // Blocks checkout when the admin has closed the store or the cart is below the
   // configured minimum order. Returns true when a guard fired.
@@ -112,236 +175,86 @@ export function usePaymentOrchestration({
   };
 
   const handlePayForMe = async () => {
-    if (await checkoutBlocked()) return;
-    if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
-      showCheckoutNotice('Delivery Address Required', 'Please enter your delivery address, state, and country before generating a payment link.');
-      return;
-    }
-    if (!contactPhone.trim() || contactPhone.replace(/\D/g, '').length < 10) {
-      showCheckoutNotice('Phone Required', 'Please enter a valid contact phone number.');
-      return;
-    }
-    if (!user || !profile) {
-      showCheckoutNotice('Sign in required', 'Sign in before creating a Pay for Me link so the payment stays connected to your order.');
-      return;
-    }
-
+    if (inFlight.current) return;
+    inFlight.current = true;
     setPayLinkLoading(true);
     try {
+      if (await checkoutBlocked()) return;
+      if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
+        showCheckoutNotice('Delivery Address Required', 'Please enter your delivery address, state, and country before generating a payment link.');
+        return;
+      }
+      if (!contactPhone.trim() || contactPhone.replace(/\D/g, '').length < 10) {
+        showCheckoutNotice('Phone Required', 'Please enter a valid contact phone number.');
+        return;
+      }
+      if (!user || !profile) {
+        showCheckoutNotice('Sign in required', 'Sign in before creating a Pay for Me link so the payment stays connected to your order.');
+        return;
+      }
+
       const subtotalNGN = getSubtotalInNGN();
       const discountNGN = calculateDiscountNGN(items, appliedPromo, subtotalNGN);
-      const discountedSubtotalNGN = subtotalNGN - discountNGN;
-      const fullDeliveryAddress = getFullDeliveryAddress();
       const customizationFeeTotal = calculateCustomizationFeeTotal(items, config);
-      const orderTotalsForLink = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
+      const displayedTotals = calculateOrderTotal(subtotalNGN - discountNGN, getFullDeliveryAddress(), 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
 
-      const orderItems = items.map(item => ({
-        product_id: item.productId,
-        image: item.productImage ?? null,
-        name: item.productName,
-        price: item.price,
-        quantity: item.quantity,
-        size: item.size,
-        color: item.color,
-        note: item.note ?? null,
-        logo_url: item.logoUrl ?? null,
-        has_customization_fee: item.hasCustomizationFee ?? false,
-      }));
-
-      // Create order with pending_payment status
-      const { data: orderRecord, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user.id,
-          items: orderItems,
-          subtotal: orderTotalsForLink.subtotal,
-          service_fee: orderTotalsForLink.serviceFee,
-          delivery_fee: orderTotalsForLink.deliveryFee,
-          tax: orderTotalsForLink.tax,
-          customization_fee: orderTotalsForLink.customizationFee,
-          total: orderTotalsForLink.total,
-          payment_method: 'pay_link',
-          payment_status: 'pending_payment',
-          order_status: 'pending_payment',
-          delivery_address: fullDeliveryAddress,
-          delivery_state: deliveryState.trim(),
-          delivery_country: deliveryCountry.trim(),
-          contact_phone: contactPhone.trim(),
-          currency: 'NGN',
-          promo_code: appliedPromo?.code || null,
-          promo_code_id: appliedPromo?.promoId || null,
-          discount_amount: discountNGN,
-          notes: orderNote.trim() || null,
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // Generate a unique token
-      const token = `${orderRecord.id.replace(/-/g, '').slice(0, 16)}`;
-      const payLink = buildPayLink(token);
-
-      // Store the link in payment_links table
-      const { error: linkError } = await supabase
-        .from('payment_links')
-        .insert({
-          order_id: orderRecord.id,
-          user_id: user.id,
-          token,
-          amount_ngn: orderTotalsForLink.total,
-          status: 'pending',
-          requester_name: profile?.full_name || 'Someone',
-          items: orderItems,
-          expires_at: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-        });
-
-      if (linkError) {
-        await supabase.from('orders').delete().eq('id', orderRecord.id).eq('payment_status', 'pending_payment');
-        throw linkError;
+      const result = await placeOrder('pay_link', displayedTotals.total);
+      if (!result.success || !result.orderId || !result.token) {
+        showCheckoutNotice('Error', placeOrderErrorMessage(result));
+        return;
       }
 
       // Email + notify the customer that an order is awaiting payment (best-effort).
       supabase.functions.invoke('send-payment-reminder', {
-        body: { orderId: orderRecord.id, source: 'initial' },
+        body: { orderId: result.orderId, source: 'initial' },
       }).then(({ error }) => {
         if (error) console.error('Initial payment reminder failed:', error.message);
       }).catch((error) => console.error('Initial payment reminder failed:', error));
 
       posthog.capture('pay_for_me_link_created', {
-        order_id: orderRecord.id,
-        amount_ngn: orderTotalsForLink.total,
-        items_count: orderItems.length,
+        order_id: result.orderId,
+        amount_ngn: result.totals?.total ?? null,
+        items_count: items.length,
       });
-      setGeneratedPayLink(payLink);
+      setGeneratedPayLink(buildPayLink(result.token));
       setShowPayLinkModal(true);
     } catch (error: any) {
       showCheckoutNotice('Error', error.message || 'Could not generate payment link. Please try again.');
     } finally {
+      inFlight.current = false;
       setPayLinkLoading(false);
     }
   };
 
-  const processWalletPayment = async (orderTotals: any, discountAmount: number) => {
+  const processWalletPayment = async (expectedTotal: number) => {
     try {
-      // Prepare order items for database
-      const orderItems = items.map(item => ({
-        product_id: item.productId,
-        image: item.productImage ?? null,
-        name: item.productName,
-        price: item.price,
-        quantity: item.quantity,
-        size: item.size,
-        color: item.color,
-        note: item.note ?? null,
-        logo_url: item.logoUrl ?? null,
-        has_customization_fee: item.hasCustomizationFee ?? false,
-      }));
-
-      const fullDeliveryAddress = getFullDeliveryAddress();
-
-      // First validate stock availability using the database function
-      const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
-        order_items: orderItems
-      });
-
-      if (stockValidationError) {
-        throw new Error(`Stock validation failed: ${stockValidationError.message}`);
+      // Debit, paid order and ledger entry happen in one DB transaction on
+      // the server, so a failure can never leave a debit without an order.
+      const result = await placeOrder('wallet', expectedTotal);
+      if (!result.success || !result.orderId) {
+        showCheckoutNotice(
+          result.code === 'insufficient_balance' ? 'Insufficient Balance' : 'Order not placed',
+          placeOrderErrorMessage(result)
+        );
+        return;
       }
+      const total = result.totals?.total ?? expectedTotal;
 
-      // Debit the wallet BEFORE creating a paid order. deduct_wallet() checks
-      // and deducts atomically under a row lock, so it's immune to the stale
-      // client-side balance read and to two concurrent orders both passing a
-      // "sufficient balance" check. Doing this first means a failure here
-      // never leaves a paid order with no payment behind it.
-      const { data: debited, error: walletError } = await supabase.rpc('deduct_wallet', {
-        uid: user!.id,
-        amount: orderTotals.total,
-      });
-      if (walletError) throw walletError;
-      if (!debited) {
-        throw new Error('Insufficient wallet balance. Please refresh and try again.');
-      }
-
-      // Create order record with payment_status 'paid' to trigger stock reduction
-      const { data: orderRecord, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user!.id,
-          items: orderItems,
-          subtotal: orderTotals.subtotal,
-          service_fee: orderTotals.serviceFee,
-          delivery_fee: orderTotals.deliveryFee,
-          tax: orderTotals.tax,
-          customization_fee: orderTotals.customizationFee,
-          total: orderTotals.total,
-          payment_method: 'wallet',
-          payment_status: 'paid',
-          order_status: 'pending',
-          delivery_address: fullDeliveryAddress,
-          delivery_state: deliveryState.trim(),
-          delivery_country: deliveryCountry.trim(),
-          contact_phone: contactPhone.trim(),
-          currency: 'NGN',
-          promo_code: appliedPromo?.code || null,
-          promo_code_id: appliedPromo?.promoId || null,
-          discount_amount: discountAmount,
-          notes: orderNote.trim() || null,
-        })
-        .select()
-        .single();
-
-      if (orderError) {
-        // Wallet was already debited - refund it since no order exists to
-        // charge for. Uses the same atomic credit_wallet the late-delivery
-        // guarantee uses, so this can't race with anything else touching the balance.
-        try {
-          const { error: refundError } = await supabase.rpc('credit_wallet', {
-            p_user_id: user!.id,
-            p_amount: orderTotals.total,
-            p_description: 'Refund: order could not be created after wallet debit',
-            p_reference: null,
-          });
-          if (refundError) throw refundError;
-        } catch (refundError) {
-          console.error('CRITICAL: wallet debited but refund-on-failure also failed', refundError);
-          posthog.captureException(refundError instanceof Error ? refundError : new Error(String(refundError)), {
-            context: 'processWalletPayment_refund_failed',
-          });
-        }
-        throw orderError;
-      }
-
-      console.log('Order created successfully:', orderRecord.id);
+      console.log('Order created successfully:', result.orderId);
       await logEvent('purchase', {
-        transaction_id: orderRecord.id,
+        transaction_id: result.orderId,
         currency: 'NGN',
-        value: orderTotals.total,
+        value: total,
       });
 
       posthog.capture('order_placed', {
-        order_id: orderRecord.id,
+        order_id: result.orderId,
         payment_method: 'wallet',
         currency: 'NGN',
-        total: orderTotals.total,
+        total,
         items_count: getTotalItems(),
         promo_code: appliedPromo?.code ?? null,
       });
-      console.log('Promo used with ID:', appliedPromo?.promoId); // Debug log
-
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user!.id,
-          type: 'debit',
-          amount: orderTotals.total,
-          description: `Order payment - ${getTotalItems()} items${appliedPromo ? ` (${appliedPromo.code} applied)` : ''}`,
-          reference: orderRecord.id,
-          status: 'completed'
-        });
-
-      if (transactionError) throw transactionError;
 
       await refreshProfile();
 
@@ -378,41 +291,47 @@ export function usePaymentOrchestration({
   };
 
   const handleOrder = async (paymentMethod: 'wallet' | 'card') => {
-    if (await checkoutBlocked()) return;
-    if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
-      showCheckoutNotice(
-        'Delivery Address Required',
-        'Please enter your delivery address, state, and country.'
-      );
-      return;
-    }
-    if (!contactPhone.trim() || contactPhone.replace(/\D/g, '').length < 10) {
-      showCheckoutNotice('Phone Required', 'Please enter a valid contact phone number for delivery.');
-      return;
-    }
-
-    if (!user || !profile) {
-      showCheckoutNotice('Authentication Required', 'Please sign in to place an order');
-      return;
-    }
-
+    if (inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
-
-    await logEvent('add_payment_info', {
-      payment_method: paymentMethod,
-    });
+    // Stays true while the Paystack popup is open; released on success/cancel.
+    let paystackOpened = false;
 
     try {
-      // Calculate totals in NGN (our base currency) with discount applied
+      if (await checkoutBlocked()) return;
+      if (!deliveryAddress.trim() || !deliveryState.trim() || !deliveryCountry.trim()) {
+        showCheckoutNotice(
+          'Delivery Address Required',
+          'Please enter your delivery address, state, and country.'
+        );
+        return;
+      }
+      if (!contactPhone.trim() || contactPhone.replace(/\D/g, '').length < 10) {
+        showCheckoutNotice('Phone Required', 'Please enter a valid contact phone number for delivery.');
+        return;
+      }
+
+      if (!user || !profile) {
+        showCheckoutNotice('Authentication Required', 'Please sign in to place an order');
+        return;
+      }
+
+      if (paymentMethod === 'card' && userCurrency !== 'NGN') {
+        showCheckoutNotice('Card payment unavailable', 'International card payments are unavailable right now. Switch your currency to NGN or pay with your wallet.');
+        return;
+      }
+
+      await logEvent('add_payment_info', {
+        payment_method: paymentMethod,
+      });
+
+      // Totals as displayed at checkout (NGN, discount applied). place-order
+      // recomputes them from the database and refuses to charge more.
       const subtotalNGN = getSubtotalInNGN();
       const discountNGN = calculateDiscountNGN(items, appliedPromo, subtotalNGN);
-      const discountedSubtotalNGN = subtotalNGN - discountNGN;
-      const fullDeliveryAddress = getFullDeliveryAddress();
       const customizationFeeTotal = calculateCustomizationFeeTotal(items, config);
+      const orderTotals = calculateOrderTotal(subtotalNGN - discountNGN, getFullDeliveryAddress(), 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
 
-      const orderTotals = calculateOrderTotal(discountedSubtotalNGN, fullDeliveryAddress, 'NGN', 0, effectivePromoType(appliedPromo?.type), config, customizationFeeTotal);
-
-      // For wallet payment, check balance
       if (paymentMethod === 'wallet') {
         if (profile.wallet_balance < orderTotals.total) {
           const neededInUserCurrency = convertFromNGN(orderTotals.total, userCurrency);
@@ -422,129 +341,50 @@ export function usePaymentOrchestration({
             'Insufficient Balance',
             `Your wallet balance is ${formatCurrency(balanceInUserCurrency, userCurrency)}. You need ${formatCurrency(neededInUserCurrency, userCurrency)} to complete this order.`
           );
-          setLoading(false);
           return;
         }
 
-        // Process wallet payment immediately
-        await processWalletPayment(orderTotals, discountNGN);
-      } else {
-        // Prepare for online payment
-        const paymentCurrency = userCurrency;
-        const paymentAmount = userCurrency === 'NGN' ?
-          orderTotals.total :
-          convertFromNGN(orderTotals.total, userCurrency);
-
-        const orderItems = items.map(item => ({
-          product_id: item.productId,
-          image: item.productImage ?? null,
-          name: item.productName,
-          price: item.price,
-          quantity: item.quantity,
-          size: item.size,
-          color: item.color,
-          note: item.note ?? null,
-          logo_url: item.logoUrl ?? null,
-          has_customization_fee: item.hasCustomizationFee ?? false,
-        }));
-
-        if (paymentMethod === 'card' && userCurrency === 'NGN') {
-          // Create the order BEFORE opening Paystack, as pending_payment -
-          // exactly like handlePayForMe does. Without this, the order used
-          // to be created only after Paystack reported success client-side,
-          // so a dropped connection at that point meant the customer was
-          // charged with no order and nothing on our side to reconcile
-          // against. Now there's always a row for the webhook/reconciliation
-          // job to settle even if this browser/app never calls back.
-          const { error: stockValidationError } = await supabase.rpc('validate_stock_availability', {
-            order_items: orderItems
-          });
-          if (stockValidationError) {
-            showCheckoutNotice('Error', `Some items are no longer available: ${stockValidationError.message}`);
-            setLoading(false);
-            return;
-          }
-
-          const { data: orderRecord, error: orderError } = await supabase
-            .from('orders')
-            .insert({
-              user_id: user.id,
-              items: orderItems,
-              subtotal: orderTotals.subtotal,
-              service_fee: orderTotals.serviceFee,
-              delivery_fee: orderTotals.deliveryFee,
-              tax: orderTotals.tax,
-              customization_fee: orderTotals.customizationFee,
-              total: orderTotals.total,
-              payment_method: 'paystack',
-              payment_status: 'pending_payment',
-              order_status: 'pending_payment',
-              delivery_address: fullDeliveryAddress,
-              delivery_state: deliveryState.trim(),
-              delivery_country: deliveryCountry.trim(),
-              contact_phone: contactPhone.trim(),
-              currency: 'NGN',
-              original_amount: paymentAmount,
-              promo_code: appliedPromo?.code || null,
-              promo_code_id: appliedPromo?.promoId || null,
-              discount_amount: discountNGN,
-              notes: orderNote.trim() || null,
-              description: orderNote.trim() || null,
-            })
-            .select()
-            .single();
-
-          if (orderError) {
-            showCheckoutNotice('Error', 'Could not start checkout. Please try again.');
-            setLoading(false);
-            return;
-          }
-
-          // Fire the same "complete your payment" email pay-for-me links
-          // already send on creation - best-effort, doesn't block opening
-          // Paystack. Covers the case where the customer closes the popup
-          // before paying: they still get a reminder immediately rather
-          // than only if/when an admin later notices and sends one manually.
-          supabase.functions.invoke('send-payment-reminder', {
-            body: { orderId: orderRecord.id, source: 'initial' },
-          }).then(({ error }) => {
-            if (error) console.error('Initial payment reminder failed:', error.message);
-          }).catch((error) => console.error('Initial payment reminder failed:', error));
-
-          setOrderData({
-            ...orderTotals,
-            id: orderRecord.id,
-            appliedPromo,
-            discountAmount: discountNGN,
-            original_amount: paymentAmount,
-            currency: paymentCurrency,
-          });
-          setShowPaystack(true);
-        } else {
-          // Non-NGN "card" checkout has no payment provider wired up yet -
-          // preserved as-is (pre-existing behavior), just staging the data.
-          setOrderData({
-            ...orderTotals,
-            items: orderItems,
-            delivery_address: fullDeliveryAddress,
-            delivery_state: deliveryState.trim(),
-            delivery_country: deliveryCountry.trim(),
-            contact_phone: contactPhone.trim(),
-            payment_method: paymentMethod,
-            currency: paymentCurrency,
-            original_amount: paymentAmount,
-            appliedPromo,
-            discountAmount: discountNGN,
-            notes: orderNote.trim() || null,
-            description: orderNote.trim() || null,
-          });
-        }
+        await processWalletPayment(orderTotals.total);
+        return;
       }
+
+      // Card: the order is created as pending_payment BEFORE Paystack opens,
+      // so there's always a row for the webhook/reconciliation job to settle
+      // even if this browser/app never calls back after a successful charge.
+      const result = await placeOrder('paystack', orderTotals.total);
+      if (!result.success || !result.orderId || !result.totals) {
+        showCheckoutNotice('Error', placeOrderErrorMessage(result));
+        return;
+      }
+
+      // Fire the same "complete your payment" email pay-for-me links
+      // already send on creation - best-effort, doesn't block opening
+      // Paystack. Covers the case where the customer closes the popup
+      // before paying: they still get a reminder immediately rather
+      // than only if/when an admin later notices and sends one manually.
+      supabase.functions.invoke('send-payment-reminder', {
+        body: { orderId: result.orderId, source: 'initial' },
+      }).then(({ error }) => {
+        if (error) console.error('Initial payment reminder failed:', error.message);
+      }).catch((error) => console.error('Initial payment reminder failed:', error));
+
+      setOrderData({
+        ...result.totals,
+        id: result.orderId,
+        appliedPromo,
+        original_amount: result.totals.total,
+        currency: 'NGN',
+      });
+      paystackOpened = true;
+      setShowPaystack(true);
     } catch (error) {
       console.error('Error processing order:', error);
       showCheckoutNotice('Error', 'Failed to process order. Please try again.');
     } finally {
-      setLoading(false);
+      if (!paystackOpened) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
   };
 
@@ -618,12 +458,21 @@ export function usePaymentOrchestration({
   };
 
   const handlePaystackSuccess = async (response: any) => {
+    // The popup can report success more than once; the order only needs
+    // confirming once (the server side is idempotent, analytics isn't).
+    if (!inFlight.current) return;
     setShowPaystack(false);
-    await completeOnlinePayment(response.reference, 'paystack');
+    try {
+      await completeOnlinePayment(response.reference, 'paystack');
+    } finally {
+      inFlight.current = false;
+      setLoading(false);
+    }
   };
 
   const handlePaystackCancel = () => {
     setShowPaystack(false);
+    inFlight.current = false;
     setLoading(false);
     showCheckoutNotice('Payment Cancelled', 'Your payment was cancelled');
   };

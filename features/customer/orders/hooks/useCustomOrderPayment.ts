@@ -22,45 +22,33 @@ export function useCustomOrderPayment({ profile, userId, refreshProfile, onNotic
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [paymentChoice, setPaymentChoice] = useState<{ invoice: Invoice; order: Order } | null>(null);
 
-  const completePayment = async (invoice: Invoice, customRequest: Order, paymentMethod: string) => {
-    try {
-      const { error: invoiceError } = await supabase
-        .from('invoices')
-        .update({ status: 'paid' })
-        .eq('id', invoice.id);
+  // Settles the invoice server-side (pay-invoice edge function): wallet
+  // debit, ledger entry, invoice paid and request moved to payment_made all
+  // happen in one DB transaction there, and Paystack charges are verified
+  // before anything is marked paid.
+  const payInvoice = async (body: Record<string, unknown>) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const jwt = sessionData.session?.access_token;
+    if (!jwt) throw new Error('Not signed in');
 
-      if (invoiceError) throw invoiceError;
+    const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/pay-invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json().catch(() => null);
+    if (!result?.success) throw new Error(result?.error || 'The payment could not be processed.');
+  };
 
-      // Change custom request status to 'payment_made' instead of 'completed'
-      const { error: requestError } = await supabase
-        .from('custom_requests')
-        .update({ status: 'payment_made' })
-        .eq('id', customRequest.id);
-
-      if (requestError) throw requestError;
-
-      const { error: notifyError } = await supabase.rpc('notify_admins', {
-        p_title: 'Payment Received',
-        p_message: `Payment received for custom order "${customRequest.title}" - Amount: ${formatInvoiceAmount(invoice, profile?.preferred_currency)} via ${paymentMethod}`,
-        p_type: 'order',
-      });
-
-      if (notifyError) {
-        console.warn('notify_admins failed:', notifyError);
-      }
-
-      // Only refresh profile for wallet payments
-      if (paymentMethod === 'wallet') {
-        await refreshProfile();
-      }
-
-      onNotice('success', 'Payment received. Your custom order can now move into production.');
-
-      await onPaymentComplete();
-    } catch (error) {
-      console.error('Error completing payment:', error);
-      throw error;
+  const completePayment = async (paymentMethod: string) => {
+    // Only refresh profile for wallet payments
+    if (paymentMethod === 'wallet') {
+      await refreshProfile();
     }
+
+    onNotice('success', 'Payment received. Your custom order can now move into production.');
+
+    await onPaymentComplete();
   };
 
   const handleWalletPayment = async (invoice: Invoice, customRequest: Order) => {
@@ -86,36 +74,11 @@ export function useCustomOrderPayment({ profile, userId, refreshProfile, onNotic
     }
 
     try {
-      // Only deduct from wallet for wallet payments
-      const { error: walletError } = await supabase
-        .from('profiles')
-        .update({
-          wallet_balance: profile.wallet_balance - invoice.amount
-        })
-        .eq('id', userId!);
-
-      if (walletError) throw walletError;
-
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId!,
-          type: 'debit',
-          amount: invoice.amount,
-          description: `Payment for custom order: ${customRequest.title}`,
-          reference: invoice.id,
-          status: 'completed',
-          currency: invoice.currency || 'NGN',
-          original_amount: invoice.original_amount,
-          payment_provider: 'wallet'
-        });
-
-      if (transactionError) throw transactionError;
-
-      await completePayment(invoice, customRequest, 'wallet');
+      await payInvoice({ method: 'wallet', invoiceId: invoice.id });
+      await completePayment('wallet');
     } catch (error) {
       console.error('Error processing wallet payment:', error);
-      onNotice('error', 'The payment could not be processed. Your order has not been updated.');
+      onNotice('error', error instanceof Error ? error.message : 'The payment could not be processed. Your order has not been updated.');
     }
   };
 
@@ -182,27 +145,11 @@ export function useCustomOrderPayment({ profile, userId, refreshProfile, onNotic
     if (!paymentInvoice || !paymentOrder) return;
 
     try {
-      // For Paystack payments, DO NOT deduct from wallet - transaction record only
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId!,
-          type: 'debit',
-          amount: paymentInvoice.amount,
-          description: `Payment for custom order: ${paymentOrder.title}`,
-          reference: response.reference,
-          status: 'completed',
-          currency: paymentInvoice.currency || 'NGN',
-          original_amount: paymentInvoice.original_amount,
-          payment_provider: 'paystack'
-        });
-
-      if (transactionError) throw transactionError;
-
-      await completePayment(paymentInvoice, paymentOrder, 'paystack');
+      await payInvoice({ method: 'paystack', reference: response.reference });
+      await completePayment('paystack');
     } catch (error) {
       console.error('Error processing Paystack payment:', error);
-      onNotice('error', 'Payment succeeded, but the order update failed. Contact support with your payment reference.');
+      onNotice('error', 'We\'re verifying your payment now. If the order doesn\'t update within a few minutes, contact support with your payment reference.');
     } finally {
       setPaymentInvoice(null);
       setPaymentOrder(null);

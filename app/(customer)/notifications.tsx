@@ -102,57 +102,45 @@ export default function NotificationsScreen() {
 
   useEffect(() => {
     fetchNotifications();
-  }, [user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   useEffect(() => {
-    if (!user) return;
+    const userId = user?.id;
+    if (!userId) return;
   
-    console.log('📡 Subscribing to realtime notifications for:', user.id);
+    console.log('📡 Subscribing to realtime notifications for:', userId);
   
+    // Unique suffix: removeChannel is async, so re-subscribing under the same
+    // name while the old channel is still leaving would get the dead channel back.
     const channel = supabase
-      .channel(`notifications-screen-${user.id}`)
+      .channel(`notifications-screen-${userId}-${Date.now()}`)
   
-      // 1) Personal notifications (user_id = this user)
+      // 1) New notifications. Realtime filters can't express "user_id is null",
+      //    so listen unfiltered and keep personal + broadcast rows client-side.
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('🔔 REALTIME (USER) - NotificationsScreen:', payload.new);
+          const incoming = payload.new as Notification;
+          const ownerId = (incoming as any).user_id;
+          if (ownerId != null && ownerId !== userId) return;
+
+          console.log('🔔 REALTIME (INSERT) - NotificationsScreen:', incoming.id);
   
           setNotifications((prev) => {
-            const exists = prev.some((n) => n.id === payload.new.id);
+            const exists = prev.some((n) => n.id === incoming.id);
             if (exists) return prev;
-            return [payload.new as Notification, ...prev];
+            return [incoming, ...prev];
           });
         }
       )
   
-      // 2) Broadcast notifications (user_id is null)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: 'user_id=is.null',
-        },
-        (payload) => {
-          console.log('🔔 REALTIME (BROADCAST) - NotificationsScreen:', payload.new);
-  
-          setNotifications((prev) => {
-            const exists = prev.some((n) => n.id === payload.new.id);
-            if (exists) return prev;
-            return [payload.new as Notification, ...prev];
-          });
-        }
-      )
-  
-      // 3) When anything updates (is_read changes), update local state
+      // 2) When anything updates (is_read changes), update local state
       .on(
         'postgres_changes',
         {
@@ -165,7 +153,7 @@ export default function NotificationsScreen() {
   
           // Only apply updates that belong to this user OR broadcast
           const belongsToUserOrBroadcast =
-            (updated as any).user_id === user.id || (updated as any).user_id == null;
+            (updated as any).user_id === userId || (updated as any).user_id == null;
   
           if (!belongsToUserOrBroadcast) return;
   
@@ -182,7 +170,7 @@ export default function NotificationsScreen() {
       console.log('🧹 Unsubscribing notifications screen channel');
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user?.id]);
   
 
   const formatDate = (dateString: string) => {

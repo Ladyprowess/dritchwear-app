@@ -51,5 +51,5 @@ Deno.serve(async (req: Request) => {
   }
 
   const result = await confirmCheckoutOrder(supabase, { orderId, reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
-  return json(result, result.status);
+  return json({ ...result }, result.status);
 });

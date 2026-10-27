@@ -8,6 +8,24 @@ const WEB_PUSH_VAPID_PUBLIC_KEY = process.env.EXPO_PUBLIC_WEB_PUSH_VAPID_PUBLIC_
 // Dummy subscription shape so cleanup never crashes
 const DUMMY_SUB = { remove() {} };
 
+// Show alerts for pushes that arrive while the app is open (expo-notifications
+// suppresses them by default). Must run at module scope, before any push lands.
+if (!isWeb) {
+  try {
+    const Notifications = require('expo-notifications');
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (e) {
+    console.log('🔕 Failed to set notification handler (non-blocking):', e);
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');

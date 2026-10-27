@@ -1,5 +1,5 @@
 import { Redirect, Tabs, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChartBar as BarChart3, Package, Users, Bell, Settings, ShoppingBag, Mail } from 'lucide-react-native';
 import { Platform, useWindowDimensions, View } from 'react-native';
@@ -36,8 +36,25 @@ export default function AdminLayout() {
     };
   }, []);
 
+  // isInitialized (and on web the auth failsafe's profileLoaded) can flip true
+  // before the profile arrives. Wait for it instead of redirecting, otherwise a
+  // refresh or deep link to e.g. /orders bounces through the customer layout
+  // and lands on the dashboard. Give up after a while so a failed fetch still
+  // falls through to the role check.
+  const awaitingProfile = !!user && !profile;
+  const [profileWaitExpired, setProfileWaitExpired] = useState(false);
+  useEffect(() => {
+    if (!awaitingProfile) {
+      setProfileWaitExpired(false);
+      return;
+    }
+    const t = setTimeout(() => setProfileWaitExpired(true), 10000);
+    return () => clearTimeout(t);
+  }, [awaitingProfile]);
+
   if (!isInitialized) return null;
   if (!user) return <Redirect href="/(auth)/welcome" />;
+  if (awaitingProfile && !profileWaitExpired) return null;
   if (profile?.role !== 'admin') return <Redirect href="/(customer)" />;
 
   return (

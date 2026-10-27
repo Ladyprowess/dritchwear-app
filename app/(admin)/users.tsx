@@ -13,7 +13,7 @@ interface User {
   location: string | null;
   wallet_balance: number;
   points_balance: number;
-  role: string;
+  role: 'customer' | 'admin';
   created_at: string;
 }
 

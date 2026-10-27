@@ -81,34 +81,22 @@ export default function FundWalletScreen() {
     setShowPaystack(false);
 
     try {
-      const fundAmount = parseFloat(amount);
-      const ngnAmount = fundAmount; // For Paystack, amount is already in NGN
+      const ngnAmount = parseFloat(amount); // For Paystack, amount is already in NGN
 
-      // Create transaction record
-      const { error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: user!.id,
-          type: 'credit',
-          amount: ngnAmount,
-          currency: 'NGN',
-          description: `Wallet funding via Paystack`,
-          reference: response.reference,
-          status: 'completed',
-          payment_provider: 'paystack'
-        });
+      // The server verifies the charge with Paystack and credits the wallet
+      // once per reference. paystack-webhook does the same independently if
+      // this call never gets through.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const jwt = sessionData.session?.access_token;
+      if (!jwt) throw new Error('Not signed in');
 
-      if (transactionError) throw transactionError;
-
-      // Update wallet balance
-      const { error: walletError } = await supabase
-        .from('profiles')
-        .update({
-          wallet_balance: (profile!.wallet_balance || 0) + ngnAmount
-        })
-        .eq('id', user!.id);
-
-      if (walletError) throw walletError;
+      const confirmResponse = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/confirm-wallet-funding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ reference: response.reference }),
+      });
+      const result = await confirmResponse.json().catch(() => null);
+      if (!result?.success) throw new Error(result?.error || 'Wallet funding could not be confirmed');
 
       // Refresh profile to get updated balance
       await refreshProfile();
@@ -131,7 +119,7 @@ export default function FundWalletScreen() {
       );
     } catch (error) {
       console.error('Error updating wallet:', error);
-      Alert.alert('Error', 'Payment was successful but failed to update wallet. Please contact support.');
+      Alert.alert('Confirming your payment', 'We\'re verifying your payment now. If your balance doesn\'t update within a few minutes, please contact support with your payment reference.');
     } finally {
       setLoading(false);
     }
@@ -311,6 +299,7 @@ export default function FundWalletScreen() {
               amount={parseFloat(amount)}
               publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
               customerName={profile.full_name || 'Customer'}
+              orderId={`wallet:${profile.id}:${parseFloat(amount)}`}
               onSuccess={handlePaystackSuccess}
               onCancel={handlePaystackCancel}
             />

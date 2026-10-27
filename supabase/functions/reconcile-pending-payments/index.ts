@@ -10,7 +10,9 @@
 // confirmCheckoutOrder) - so we instead pull Paystack's list of recent
 // successful transactions and match them by the order-token embedded in
 // checkout metadata (a payment_links.token for pay-for-me, or a raw
-// orders.id for regular checkout - tried in that order).
+// orders.id for regular checkout - tried in that order). Wallet top-ups
+// (`wallet:` tokens) and custom-order invoices (`invoice:` tokens) are
+// settled here too, through the same idempotent helpers the webhook uses.
 //
 // Deploy: supabase functions deploy reconcile-pending-payments --no-verify-jwt
 // Schedule: pg_cron every 15 min, mirroring dritchwear-cart-reminders.
@@ -18,6 +20,12 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
 import { confirmPaymentLink, tokenFromMetadata } from '../_shared/confirmPaymentLink.ts';
 import { confirmCheckoutOrder } from '../_shared/confirmCheckoutOrder.ts';
+import {
+  confirmInvoicePayment,
+  confirmWalletFunding,
+  isInvoiceToken,
+  isWalletToken,
+} from '../_shared/confirmWalletAndInvoice.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -38,24 +46,29 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
   if (!PAYSTACK_SECRET_KEY) return json({ error: 'Payment verification is not configured' }, 503);
 
-  const [{ data: pendingLinks, error: linksError }, { data: pendingOrders, error: ordersError }] = await Promise.all([
+  const [
+    { data: pendingLinks, error: linksError },
+    { data: pendingOrders, error: ordersError },
+    { data: unpaidInvoices, error: invoicesError },
+  ] = await Promise.all([
     supabase.from('payment_links').select('token').eq('status', 'pending').gt('expires_at', new Date().toISOString()),
     supabase.from('orders').select('id').eq('payment_status', 'pending_payment').eq('payment_method', 'paystack'),
+    supabase.from('invoices').select('id').in('status', ['sent', 'accepted']),
   ]);
 
-  if (linksError || ordersError) {
-    console.error('reconcile-pending-payments: failed to load pending records', linksError || ordersError);
+  if (linksError || ordersError || invoicesError) {
+    console.error('reconcile-pending-payments: failed to load pending records', linksError || ordersError || invoicesError);
     return json({ error: 'Failed to load pending payments' }, 500);
   }
+  const unpaidInvoiceIds = new Set((unpaidInvoices ?? []).map((i) => i.id));
 
   // token -> which table it belongs to, so a match dispatches to the right confirm function.
   const pendingTokens = new Map<string, 'link' | 'order'>();
   (pendingLinks ?? []).forEach((l) => pendingTokens.set(l.token, 'link'));
   (pendingOrders ?? []).forEach((o) => pendingTokens.set(o.id, 'order'));
 
-  if (pendingTokens.size === 0) {
-    return json({ checked: 0, settled: 0 });
-  }
+  // No early exit when nothing is pending: wallet top-ups have no pending
+  // row on our side, so the only way to spot a missed one is to scan.
 
   const from = new Date(Date.now() - LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
   const settled: string[] = [];
@@ -76,14 +89,29 @@ Deno.serve(async (req: Request) => {
 
     for (const tx of transactions) {
       const token = tokenFromMetadata(tx.metadata);
-      const kind = token ? pendingTokens.get(token) : undefined;
-      if (!token || !kind) continue;
-
-      checked += 1;
+      if (!token) continue;
       const reference = String(tx.reference ?? '');
-      const result = kind === 'link'
-        ? await confirmPaymentLink(supabase, { token, reference, paystackSecretKey: PAYSTACK_SECRET_KEY })
-        : await confirmCheckoutOrder(supabase, { orderId: token, reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
+
+      let result;
+      if (isWalletToken(token)) {
+        // Already credited → its reference is in the ledger; skip the
+        // Paystack verify round-trip for the common case.
+        const { data: credited } = await supabase.from('transactions').select('id').eq('reference', reference).limit(1);
+        if (credited && credited.length > 0) continue;
+        checked += 1;
+        result = await confirmWalletFunding(supabase, { reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
+      } else if (isInvoiceToken(token)) {
+        if (!unpaidInvoiceIds.has(token.slice('invoice:'.length))) continue;
+        checked += 1;
+        result = await confirmInvoicePayment(supabase, { reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
+      } else {
+        const kind = pendingTokens.get(token);
+        if (!kind) continue;
+        checked += 1;
+        result = kind === 'link'
+          ? await confirmPaymentLink(supabase, { token, reference, paystackSecretKey: PAYSTACK_SECRET_KEY })
+          : await confirmCheckoutOrder(supabase, { orderId: token, reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
+      }
 
       if (result.success) {
         settled.push(token);

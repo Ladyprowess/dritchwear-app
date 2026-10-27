@@ -61,20 +61,40 @@ const CartContext = createContext<CartContextType>({
 
 const CART_STORAGE_KEY = '@dritchwear_cart';
 const PROMO_STORAGE_KEY = '@dritchwear_applied_promo';
+// Which signed-in user the stored cart belongs to. A guest cart has no owner
+// and is adopted by whoever signs in next.
+const CART_OWNER_STORAGE_KEY = '@dritchwear_cart_owner';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [items, setItems] = useState<CartItem[]>([]);
   const [appliedPromo, setAppliedPromoState] = useState<AppliedPromo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cartOwnerId, setCartOwnerId] = useState<string | null>(null);
 
   // Load cart and promo from storage on app start
   useEffect(() => {
     loadCartAndPromo();
   }, []);
 
+  // Shared device: when a different account signs in, drop the previous
+  // account's cart so it isn't shown to (or synced into) the new account.
   useEffect(() => {
-    if (loading || !user?.id) return;
+    if (loading || !user?.id || cartOwnerId === user.id) return;
+    if (cartOwnerId) {
+      setItems([]);
+      setAppliedPromoState(null);
+      void saveCart([]);
+      void savePromo(null);
+      console.log('🗑️ Cart cleared: signed-in account changed');
+    }
+    setCartOwnerId(user.id);
+    AsyncStorage.setItem(CART_OWNER_STORAGE_KEY, user.id).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user?.id, cartOwnerId]);
+
+  useEffect(() => {
+    if (loading || !user?.id || cartOwnerId !== user.id) return;
     const timer = setTimeout(() => {
       const active = items.length > 0;
       void supabase.from('cart_sessions').upsert({
@@ -92,14 +112,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       });
     }, 800);
     return () => clearTimeout(timer);
-  }, [items, loading, user?.id]);
+  }, [items, loading, user?.id, cartOwnerId]);
 
   const loadCartAndPromo = async () => {
     try {
-      const [storedCart, storedPromo] = await Promise.all([
+      const [storedCart, storedPromo, storedOwner] = await Promise.all([
         AsyncStorage.getItem(CART_STORAGE_KEY),
-        AsyncStorage.getItem(PROMO_STORAGE_KEY)
+        AsyncStorage.getItem(PROMO_STORAGE_KEY),
+        AsyncStorage.getItem(CART_OWNER_STORAGE_KEY)
       ]);
+
+      if (storedOwner) setCartOwnerId(storedOwner);
 
       if (storedCart) {
         const parsedCart = JSON.parse(storedCart);
@@ -160,7 +183,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       );
       
       if (existingIndex >= 0) {
-        updatedItems[existingIndex].quantity += newItem.quantity;
+        const existing = updatedItems[existingIndex];
+        updatedItems[existingIndex] = { ...existing, quantity: existing.quantity + newItem.quantity };
       } else {
         updatedItems.push(newItem);
       }
@@ -177,8 +201,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const updatedItems = [...items];
-    updatedItems[index].quantity = quantity;
+    const updatedItems = items.map((item, i) => (i === index ? { ...item, quantity } : item));
     setItems(updatedItems);
     await saveCart(updatedItems);
   };

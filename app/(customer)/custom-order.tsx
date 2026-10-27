@@ -153,7 +153,7 @@ const [deadlineDate, setDeadlineDate] = useState<Date | null>(null);
   ];
 
   // Generate unique filename using crypto
-  const generateUniqueFilename = async (extension) => {
+  const generateUniqueFilename = async (extension: string) => {
     try {
       const hash = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
@@ -267,12 +267,13 @@ if (!publicUrlData?.publicUrl) {
       console.error('Image upload error:', error);
       
       let errorMessage = 'There was a problem uploading your logo. Please try again.';
+      const message = error instanceof Error ? error.message : '';
       
-      if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      if (message.includes('network') || message.includes('fetch')) {
         errorMessage = 'Network error. Please check your connection and try again.';
-      } else if (error.message?.includes('storage') || error.message?.includes('bucket')) {
+      } else if (message.includes('storage') || message.includes('bucket')) {
         errorMessage = 'Storage service unavailable. Please try again later.';
-      } else if (error.message?.includes('permission') || error.message?.includes('unauthorized')) {
+      } else if (message.includes('permission') || message.includes('unauthorized')) {
         errorMessage = 'Upload permission denied. Please contact support.';
       }
       
@@ -283,7 +284,7 @@ if (!publicUrlData?.publicUrl) {
   };
 
   // Helper function to decode base64 (you might need to implement this)
-  const decode = (base64String) => {
+  const decode = (base64String: string) => {
     // Convert base64 string to Uint8Array for Supabase upload
     const binaryString = atob(base64String);
     const bytes = new Uint8Array(binaryString.length);

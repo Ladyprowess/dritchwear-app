@@ -1,6 +1,6 @@
-import type { Router } from 'expo-router';
+import type { Href, Router } from 'expo-router';
 
-export function smartBack(router: Router, fallbackPath: string) {
+export function smartBack(router: Router, fallbackPath: Href) {
   if (router.canGoBack()) {
     router.back();
     return;

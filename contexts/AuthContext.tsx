@@ -8,6 +8,7 @@ import { Profile, getProfile } from '@/lib/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { posthog } from '@/lib/posthog';
 import { identifySessionReplay, resetSessionReplay } from '@/lib/sessionReplay';
+import { removePushTokenFromDatabase } from '@/lib/pushNotifications';
 
 interface AuthContextType {
   user: User | null;
@@ -127,6 +128,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       posthog.reset()
       resetSessionReplay()
     } catch {}
+
+    // 3) Detach this device's push token while the session is still valid,
+    //    so the next person on this device doesn't get this account's pushes.
+    //    Time-boxed so a slow network never blocks sign-out.
+    if (uid) {
+      await Promise.race([
+        removePushTokenFromDatabase(uid),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+    }
 
     // 4) Try Supabase signOut (ignore "session missing")
     try {

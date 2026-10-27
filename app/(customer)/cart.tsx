@@ -206,7 +206,7 @@ export default function CartScreen() {
 
           {items.map((item, index) => (
             <CartItemRow
-              key={`${item.productId}-${item.size}-${item.color}-${item.note ?? ''}`}
+              key={`${item.productId}-${item.size}-${item.color}-${item.note ?? ''}-${item.logoUrl ?? ''}`}
               item={item}
               itemPriceInUserCurrency={getItemPriceInUserCurrency(item.price, userCurrency)}
               userCurrency={userCurrency}

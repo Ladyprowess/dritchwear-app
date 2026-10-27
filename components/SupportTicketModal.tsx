@@ -95,7 +95,7 @@ export default function SupportTicketModal({ ticket, visible, onClose, onUpdate 
   useEffect(() => {
     if (!ticket?.id || !visible) return;
     const channel = supabase
-      .channel(`support-ticket-${ticket.id}`)
+      .channel(`support-ticket-${ticket.id}-${Date.now()}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'support_messages', filter: `ticket_id=eq.${ticket.id}` },
@@ -134,7 +134,11 @@ export default function SupportTicketModal({ ticket, visible, onClose, onUpdate 
   
       if (error) throw error;
   
-      setMessages(data || []);
+      // Supabase types the embedded profile as an array; at runtime it's one object.
+      setMessages(((data || []) as any[]).map((m) => ({
+        ...m,
+        sender_profile: Array.isArray(m.sender_profile) ? m.sender_profile[0] : m.sender_profile,
+      })) as SupportMessage[]);
       const attMap = await loadAttachmentsForMessages((data || []).map((m: any) => m.id));
       setAttachmentsMap(attMap);
 

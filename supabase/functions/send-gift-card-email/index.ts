@@ -3,7 +3,12 @@
 // Requires RESEND_API_KEY set in Supabase project secrets.
 // Deploy: supabase functions deploy send-gift-card-email
 
+import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
+
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
+const PUBLIC_ORIGIN = 'https://app.dritchwear.com';
+
+const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -217,6 +222,16 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Email service not configured. Add RESEND_API_KEY to Supabase secrets.' }, 503);
   }
 
+  // Signed-in purchasers only, and everything in the email comes from their
+  // own gift card row - this used to take to/link/message straight from the
+  // request with no auth, which made it an open relay for phishing mail
+  // sent from noreply@dritchwear.com.
+  const accessToken = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+  if (authError || !authData?.user) {
+    return json({ error: 'Not authenticated' }, 401);
+  }
+
   let body: Record<string, any>;
   try {
     body = await req.json();
@@ -224,10 +239,31 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { to, recipientName, senderName, amount, code, link, message } = body;
+  const { data: giftCard } = await supabase
+    .from('gift_cards')
+    .select('code, share_token, original_amount, currency, recipient_name, sender_name, recipient_email, message, status')
+    .eq('code', String(body.code ?? '').trim())
+    .eq('purchaser_user_id', authData.user.id)
+    .maybeSingle();
 
-  if (!to || !recipientName || !senderName || !amount || !code || !link) {
-    return json({ error: 'Missing required fields: to, recipientName, senderName, amount, code, link' }, 400);
+  if (!giftCard || giftCard.status !== 'active') {
+    return json({ error: 'Gift card not found' }, 404);
+  }
+  if (!giftCard.recipient_email) {
+    return json({ error: 'This gift card has no recipient email' }, 400);
+  }
+
+  const to = giftCard.recipient_email;
+  const recipientName = giftCard.recipient_name || 'there';
+  const senderName = giftCard.sender_name || 'Someone';
+  const code = giftCard.code;
+  const message = giftCard.message;
+  const link = `${PUBLIC_ORIGIN}/gift-cards?gift=${encodeURIComponent(giftCard.share_token)}`;
+  let amount: string;
+  try {
+    amount = new Intl.NumberFormat('en-NG', { style: 'currency', currency: giftCard.currency }).format(Number(giftCard.original_amount));
+  } catch {
+    amount = `${giftCard.currency} ${Number(giftCard.original_amount).toLocaleString()}`;
   }
 
   const html = buildEmailHtml({ recipientName, senderName, amount, code, link, message });

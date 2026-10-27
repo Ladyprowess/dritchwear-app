@@ -90,15 +90,60 @@ function AuthBootOverlay({ mode }: { mode: 'loading' | 'timeout' }) {
 }
 
 function PushNotificationSetup() {
-  const { user, isInitialized, loading, isAdmin } = useAuth();
+  const { user, isInitialized, loading, isAdmin, profileLoaded } = useAuth();
   const router = useRouter();
-
-  
 
   const listenersRef = useRef<any>(null);
   const hasSetupRef = useRef(false);
 
-   
+  // Read the role at tap time - the listener is registered before the profile
+  // usually loads, so a captured isAdmin would be stale (false).
+  const isAdminRef = useRef(isAdmin);
+  isAdminRef.current = isAdmin;
+
+  // Identifier of the last notification tap we navigated for, so the cold-start
+  // check and the live listener never handle the same tap twice.
+  const handledResponseIdRef = useRef<string | null>(null);
+
+  const handleNotificationResponse = useCallback((response: any) => {
+    const responseId = response?.notification?.request?.identifier ?? null;
+    if (responseId && handledResponseIdRef.current === responseId) return;
+    handledResponseIdRef.current = responseId;
+
+    const data: any = response?.notification?.request?.content?.data || {};
+    const type = String(data.type || '');
+    const admin = isAdminRef.current;
+
+    try {
+      if (type === 'chat') router.push(admin ? '/(admin)/help-support' : '/(customer)/help-support');
+      else if (type === 'order') router.push(admin ? '/(admin)/orders' : '/(customer)/orders');
+      else if (type === 'promo') router.push(admin ? '/(admin)' : '/(customer)/shop');
+      else router.push(admin ? '/(admin)/notifications' : '/(customer)/notifications');
+    } catch (e) {
+      console.log('Could not navigate:', e);
+    }
+  }, [router]);
+
+  // Cold start: the tap that launched the app fires before our listener exists,
+  // so pick it up once auth + profile are ready (role-aware routing).
+  const coldStartCheckedRef = useRef(false);
+  useEffect(() => {
+    if (Platform.OS === 'web' || coldStartCheckedRef.current) return;
+    if (!isInitialized || loading || !user?.id || !profileLoaded) return;
+    coldStartCheckedRef.current = true;
+
+    (async () => {
+      try {
+        const Notifications = require('expo-notifications');
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (!response) return;
+        // Let the root router finish its initial redirect first.
+        setTimeout(() => handleNotificationResponse(response), 300);
+      } catch (e) {
+        console.log('Could not read launch notification (non-blocking):', e);
+      }
+    })();
+  }, [user?.id, isInitialized, loading, profileLoaded, handleNotificationResponse]);
 
   useEffect(() => {
     if (!isInitialized || loading) return;
@@ -143,19 +188,7 @@ function PushNotificationSetup() {
               console.log('Could not set params:', e);
             }
           },
-          (response) => {
-            const data: any = response.notification.request.content.data || {};
-            const type = String(data.type || '');
-
-            try {
-              if (type === 'chat') router.push(isAdmin ? '/(admin)/help-support' : '/(customer)/help-support');
-              else if (type === 'order') router.push('/(customer)/orders');
-              else if (type === 'promo') router.push('/(customer)/shop');
-              else router.push('/(customer)/notifications');
-            } catch (e) {
-              console.log('Could not navigate:', e);
-            }
-          }
+          handleNotificationResponse
         );
 
         listenersRef.current = listeners;
@@ -172,7 +205,7 @@ function PushNotificationSetup() {
       }
       hasSetupRef.current = false;
     };
-  }, [user?.id, isInitialized, loading, router]);
+  }, [user?.id, isInitialized, loading, router, handleNotificationResponse]);
 
   return null;
 }

@@ -37,6 +37,7 @@ export function PaystackPaymentModal({ visible, paymentInvoice, userEmail, custo
             amount={paymentInvoice.amount}
             publicKey={process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || ''}
             customerName={customerName || 'Customer'}
+            orderId={`invoice:${paymentInvoice.id}`}
             onSuccess={onSuccess}
             onCancel={onCancel}
           />

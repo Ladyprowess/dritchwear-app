@@ -6,7 +6,7 @@
   "scripts": {
     "postinstall": "patch-package",
     "dev": "EXPO_NO_TELEMETRY=1 expo start",
-    "build:web": "expo export --platform web && node scripts/patch-pwa-head.js && cp vercel.json dist/vercel.json",
+    "build:web": "expo export --platform web && node scripts/patch-pwa-head.js && cp -R public/.well-known dist/ && cp vercel.json dist/vercel.json",
     "deploy": "npm run build:web && npx --no-install vercel link --yes --cwd dist --project dritchwear-webapp --scope dritchwear-2360s-projects && npx --no-install vercel deploy dist --prod --yes --scope dritchwear-2360s-projects",
     "lint": "expo lint",
     "android": "expo run:android",

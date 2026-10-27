@@ -54,6 +54,15 @@ interface AnalyticsData {
   }>;
 }
 
+type JoinedProfile = { full_name: string | null; email: string | null };
+
+// Supabase types embedded joins as arrays even for many-to-one relations, while
+// at runtime they arrive as a single object (or null) - accept either.
+function customerLabel(profiles: JoinedProfile | JoinedProfile[] | null | undefined): string {
+  const p = Array.isArray(profiles) ? profiles[0] : profiles;
+  return p?.full_name || p?.email || 'a customer';
+}
+
 export default function AnalyticsScreen() {
   const router = useRouter();
   const [analytics, setAnalytics] = useState<AnalyticsData>({
@@ -183,11 +192,11 @@ export default function AnalyticsScreen() {
         // Add recent orders (limit to 5)
         const recentOrderActivity = recentOrders.slice(0, 5).map(order => ({
           type: 'order',
-          description: `New order from ${order.profiles.full_name || order.profiles.email}`,
+          description: `New order from ${customerLabel(order.profiles)}`,
           amount: order.total,
           currency: order.currency || 'NGN',
           timestamp: order.created_at,
-          customerName: order.profiles.full_name || order.profiles.email,
+          customerName: customerLabel(order.profiles),
           orderNumber: generateOrderNumber(order.id, false),
         }));
 
@@ -197,9 +206,9 @@ export default function AnalyticsScreen() {
           .slice(0, 3)
           .map(request => ({
             type: 'custom_order',
-            description: `Custom order request from ${request.profiles.full_name || request.profiles.email}`,
+            description: `Custom order request from ${customerLabel(request.profiles)}`,
             timestamp: request.created_at,
-            customerName: request.profiles.full_name || request.profiles.email,
+            customerName: customerLabel(request.profiles),
             orderNumber: generateOrderNumber(request.id, true),
           })) || [];
 
@@ -350,28 +359,28 @@ export default function AnalyticsScreen() {
       value: formatCurrency(analytics.totalRevenue, selectedCurrency),
       growth: analytics.revenueGrowth,
       icon: DollarSign,
-      gradient: ['#10B981', '#047857'],
+      gradient: ['#10B981', '#047857'] as const,
     },
     {
       title: 'Total Orders',
       value: analytics.totalOrders.toLocaleString(),
       growth: analytics.orderGrowth,
       icon: ShoppingBag,
-      gradient: ['#3B82F6', '#1D4ED8'],
+      gradient: ['#3B82F6', '#1D4ED8'] as const,
     },
     {
       title: 'Total Customers',
       value: analytics.totalCustomers.toLocaleString(),
       growth: analytics.customerGrowth,
       icon: Users,
-      gradient: ['#8B5CF6', '#5A2D82'],
+      gradient: ['#8B5CF6', '#5A2D82'] as const,
     },
     {
       title: 'Avg Order Value',
       value: formatCurrency(analytics.averageOrderValue, selectedCurrency),
       growth: 0,
       icon: TrendingUp,
-      gradient: ['#F59E0B', '#D97706'],
+      gradient: ['#F59E0B', '#D97706'] as const,
     },
   ];
 

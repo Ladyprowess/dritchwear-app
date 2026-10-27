@@ -133,7 +133,7 @@ export default function MessagingScreen() {
     reload().then(() => { if (alive) { setThreadLoading(false); scrollToEnd(); } });
 
     const channel = supabase
-      .channel(`msg-thread-${ticketId}`)
+      .channel(`msg-thread-${ticketId}-${Date.now()}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_messages', filter: `ticket_id=eq.${ticketId}` }, (payload) => {
         const row = payload.new as ConvMessage;
         setMessages((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));

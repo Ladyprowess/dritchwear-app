@@ -11,15 +11,22 @@
 // independent path to the same result, driven by Paystack itself instead of
 // the payer's device.
 //
-// The metadata `token` custom field is shared by both flows: it's either a
-// payment_links.token (pay-for-me) or a raw orders.id (regular checkout) -
-// tried in that order below.
+// The metadata `token` custom field is shared by every flow: `wallet:...`
+// (wallet top-up) and `invoice:...` (custom-order invoice) are routed by
+// prefix; otherwise it's a payment_links.token (pay-for-me) or a raw
+// orders.id (regular checkout) - tried in that order below.
 //
 // Deploy: supabase functions deploy paystack-webhook --no-verify-jwt
 
 import { createClient } from 'npm:@supabase/supabase-js@2.43.4';
 import { confirmPaymentLink, tokenFromMetadata } from '../_shared/confirmPaymentLink.ts';
 import { confirmCheckoutOrder } from '../_shared/confirmCheckoutOrder.ts';
+import {
+  confirmInvoicePayment,
+  confirmWalletFunding,
+  isInvoiceToken,
+  isWalletToken,
+} from '../_shared/confirmWalletAndInvoice.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,6 +65,19 @@ async function verifySignature(rawBody: string, signatureHeader: string) {
   return constantTimeEqual(expected, signatureHeader.toLowerCase());
 }
 
+// 402 is "Paystack could not verify" - for a charge.success event that's a
+// verify-API hiccup or lag, not a real decline, so it's retried too.
+function isTransient(status: number) {
+  return status >= 500 || status === 402;
+}
+
+function ack(result: { success: boolean; status: number; alreadyPaid?: boolean; error?: string }) {
+  if (!result.success && isTransient(result.status)) {
+    return json({ received: true, handled: false, retry: true, error: result.error }, 503);
+  }
+  return json({ received: true, handled: result.success, alreadyPaid: result.alreadyPaid ?? false });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
 
@@ -74,9 +94,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid JSON payload' }, 400);
   }
 
-  // Paystack only requires a 2xx ack; retries on anything else. Once the
-  // signature checks out, we always ack with 200 so a business-logic
-  // rejection (e.g. link already paid) doesn't trigger retry storms.
+  // Paystack only requires a 2xx ack and retries on anything else (for up to
+  // 72 hours). A business-logic rejection (link already paid, amount
+  // mismatch, unknown token) is acked with 200 so it doesn't retry forever,
+  // but a transient failure (DB error, Paystack verify unreachable) answers
+  // 5xx so Paystack delivers it again - nothing else re-settles wallet
+  // top-ups and invoices if this delivery is lost.
   if (event?.event !== 'charge.success') {
     return json({ received: true, handled: false });
   }
@@ -88,6 +111,15 @@ Deno.serve(async (req: Request) => {
     // Not a pay-link or regular-checkout charge (e.g. wallet funding via a
     // different Paystack integration) - nothing for this webhook to reconcile.
     return json({ received: true, handled: false });
+  }
+
+  if (isWalletToken(token) || isInvoiceToken(token)) {
+    const settle = isWalletToken(token) ? confirmWalletFunding : confirmInvoicePayment;
+    const settled = await settle(supabase, { reference, paystackSecretKey: PAYSTACK_SECRET_KEY });
+    if (!settled.success) {
+      console.error('paystack-webhook: settlement failed', { token, reference, error: settled.error });
+    }
+    return ack(settled);
   }
 
   let result = await confirmPaymentLink(supabase, {
@@ -109,5 +141,5 @@ Deno.serve(async (req: Request) => {
     console.error('paystack-webhook: confirmation failed', { token, reference, error: result.error });
   }
 
-  return json({ received: true, handled: result.success, alreadyPaid: result.alreadyPaid ?? false });
+  return ack(result);
 });

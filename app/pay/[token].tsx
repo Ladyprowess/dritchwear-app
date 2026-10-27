@@ -71,19 +71,11 @@ export default function PayLinkGateway() {
     if (!token) { setNotFound(true); setLoadingLink(false); return; }
 
     const fetch = async () => {
-      const { data, error } = await supabase
-        .from('payment_links')
-        .select('*')
-        .eq('token', token)
-        .eq('status', 'pending')
-        .single();
+      // Returns only this one pending, unexpired link - payment_links itself
+      // isn't readable by visitors.
+      const { data, error } = await supabase.rpc('get_payment_link', { p_token: String(token) });
 
       if (error || !data) { setNotFound(true); setLoadingLink(false); return; }
-
-      // Check expiry
-      if (data.expires_at && new Date(data.expires_at) < new Date()) {
-        setNotFound(true); setLoadingLink(false); return;
-      }
 
       setLinkData(data);
       setLoadingLink(false);

@@ -29,8 +29,6 @@ interface PointsContextType {
   pointsBalance: number;
   transactions: PointsTransaction[];
   loading: boolean;
-  awardPoints: (amount: number, description: string, reference?: string) => Promise<void>;
-  spendPoints: (amount: number, description: string, reference?: string) => Promise<boolean>;
   refreshPoints: () => Promise<void>;
   pointsToNaira: (points: number) => number;
 }
@@ -39,8 +37,6 @@ const PointsContext = createContext<PointsContextType>({
   pointsBalance: 0,
   transactions: [],
   loading: false,
-  awardPoints: async () => {},
-  spendPoints: async () => false,
   refreshPoints: async () => {},
   pointsToNaira: convertPointsToNaira,
 });
@@ -81,93 +77,21 @@ export function PointsProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user?.id]);
 
+  // Points are only ever awarded/spent server-side (order, review and
+  // referral triggers, bill-pay); this context just reads them.
   useEffect(() => {
-    if (user?.id) refreshPoints();
-  }, [user?.id]);
-
-  /** Award points to the current user */
-  const awardPoints = useCallback(async (
-    amount: number,
-    description: string,
-    reference?: string,
-  ) => {
-    if (!user?.id || amount <= 0) return;
-
-    try {
-      // Insert transaction record
-      await supabase.from('points_transactions').insert({
-        user_id: user.id,
-        type: 'earned',
-        amount,
-        description,
-        reference: reference ?? null,
-      });
-
-      // Increment balance in profiles
-      await supabase.rpc('increment_points', { uid: user.id, delta: amount });
-
-      setPointsBalance((prev) => prev + amount);
-      setTransactions((prev) => [
-        {
-          id: Date.now().toString(),
-          type: 'earned',
-          amount,
-          description,
-          reference,
-          created_at: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
-
-      console.log(`✅ Awarded ${amount} points: ${description}`);
-    } catch (err) {
-      console.error('❌ awardPoints error:', err);
+    if (user?.id) {
+      refreshPoints();
+    } else {
+      // Signed out: don't keep showing the previous account's points.
+      setPointsBalance(0);
+      setTransactions([]);
     }
   }, [user?.id]);
-
-  /** Spend points; returns false if insufficient balance */
-  const spendPoints = useCallback(async (
-    amount: number,
-    description: string,
-    reference?: string,
-  ): Promise<boolean> => {
-    if (!user?.id || amount <= 0) return false;
-    if (pointsBalance < amount) return false;
-
-    try {
-      await supabase.from('points_transactions').insert({
-        user_id: user.id,
-        type: 'spent',
-        amount,
-        description,
-        reference: reference ?? null,
-      });
-
-      await supabase.rpc('increment_points', { uid: user.id, delta: -amount });
-
-      setPointsBalance((prev) => prev - amount);
-      setTransactions((prev) => [
-        {
-          id: Date.now().toString(),
-          type: 'spent',
-          amount,
-          description,
-          reference,
-          created_at: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
-
-      return true;
-    } catch (err) {
-      console.error('❌ spendPoints error:', err);
-      return false;
-    }
-  }, [user?.id, pointsBalance]);
 
   return (
     <PointsContext.Provider
-      value={{ pointsBalance, transactions, loading, awardPoints, spendPoints, refreshPoints, pointsToNaira: convertPointsToNaira }}
+      value={{ pointsBalance, transactions, loading, refreshPoints, pointsToNaira: convertPointsToNaira }}
     >
       {children}
     </PointsContext.Provider>

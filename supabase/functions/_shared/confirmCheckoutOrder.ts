@@ -7,7 +7,12 @@
 // the paying browser/app never calls back after a successful charge.
 
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2.43.4';
-import { tokenFromMetadata, amountMatchesExpected } from './confirmPaymentLink.ts';
+import {
+  tokenFromMetadata,
+  amountMatchesExpected,
+  refundUnsettleablePayment,
+  unfulfillableReason,
+} from './confirmPaymentLink.ts';
 
 export { tokenFromMetadata };
 
@@ -100,26 +105,14 @@ export async function confirmCheckoutOrder(
     .maybeSingle();
 
   if (orderUpdateError) {
-    if (/insufficient stock/i.test(orderUpdateError.message || '')) {
-      // Paystack already captured the charge but the item sold out before we
-      // could confirm - refund as wallet credit immediately (store credit,
+    const reason = unfulfillableReason(orderUpdateError.message);
+    if (reason) {
+      // Paystack already captured the charge but the order can't go through
+      // (sold out / promo used up) - refund as wallet credit (store credit,
       // since there's no automated Paystack refund integration) rather than
-      // leaving the customer charged with nothing.
-      const shortId = orderId.toString().substring(0, 8);
-      await supabase.rpc('credit_wallet', {
-        p_user_id: order.user_id,
-        p_amount: order.total,
-        p_description: `Refund: item sold out before payment could be confirmed (order #${shortId})`,
-        p_reference: orderId,
-      }).catch((refundError: unknown) => {
-        console.error('CRITICAL: stock-exhaustion refund failed for order', orderId, refundError);
-      });
-      await supabase
-        .from('orders')
-        .update({ payment_status: 'refunded', order_status: 'cancelled', paystack_reference: reference })
-        .eq('id', orderId)
-        .catch(() => {});
-      return { success: false, status: 409, error: 'Sorry, an item in your order just sold out. Your payment has been refunded to your Dritchwear wallet.' };
+      // leaving the customer charged with nothing. Atomic and once-only,
+      // since the client confirm and the webhook can both get here.
+      return refundUnsettleablePayment(supabase, { orderId, reference, reason });
     }
     return { success: false, status: 500, error: `Failed to update order: ${orderUpdateError.message}` };
   }
