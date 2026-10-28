@@ -6,7 +6,8 @@
       "Bash(supabase functions:*)",
       "Bash(supabase secrets:*)",
       "WebFetch(domain:documenter.getpostman.com)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:dritchwear.com)"
     ],
     "additionalDirectories": [
       "/Users/ladyprowess/kivora-codebase/apps/web/src/app/api/apparel/validate-promo"
